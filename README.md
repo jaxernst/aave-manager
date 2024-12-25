@@ -1,15 +1,11 @@
-## Foundry
+## Aave Leverage Manager
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+> [!CAUTION]
+> I have no idea what I'm doing, this is purely for educational purposes. Don't use this in production.
 
-Foundry consists of:
+A smart contract that manages a leveraged ETH position in Aave, inspired by [Index Coop](https://indexcoop.com/). It represents ownership as an ERC20 token, and allows anybody to rebalance the Aave position at any time.
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
+## Foundry Documentation
 
 https://book.getfoundry.sh/
 
