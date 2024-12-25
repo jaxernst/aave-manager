@@ -3,12 +3,13 @@ pragma solidity ^0.8.21;
 
 import {IPool} from "@aave/core/contracts/interfaces/IPool.sol";
 import {IWrappedTokenGatewayV3} from "@aave/periphery/contracts/misc/interfaces/IWrappedTokenGatewayV3.sol";
+import {TransferHelper} from "@uniswap/v3-periphery/libraries/TransferHelper.sol";
 import {ERC20} from "@openzeppelin/token/ERC20/ERC20.sol";
-import {ISwapRouter} from "@uniswap/interfaces/ISwapRouter.sol";
-import {TransferHelper} from "@uniswap/libraries/TransferHelper.sol";
+
+import {ISwapRouter} from "./interfaces/ISwapRouter.sol";
 
 /**
- * @title
+ * @title ETH2X
  *
  * When deposit() is called, this contract should deposit {msg.value} into Aave and borrow USDC at {tbd} rate.
  * With the USDC, the contract should swap it for ETH on Uniswap.

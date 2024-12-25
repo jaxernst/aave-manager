@@ -5,7 +5,7 @@ libs = ["lib"]
 
 remappings = [
   "@aave/=lib/aave-v3-origin/src/",
-  "@uniswap/=lib/v3-periphery/contracts/",
+  "@uniswap/v3-periphery/=lib/v3-periphery/contracts/",
   "@openzeppelin/=lib/openzeppelin-contracts/contracts/"
 ]
 
