@@ -18,6 +18,10 @@ import {ISwapRouter} from "./interfaces/ISwapRouter.sol";
  * Goal should be to have $2 worth of ETH for every 1 USDC in the contract.
  */
 contract ETH2X is ERC20 {
+    /*//////////////////////////////////////////////////////////////
+                               PARAMETERS
+    //////////////////////////////////////////////////////////////*/
+
     // Local variables
     uint256 public lastRebalance;
     uint256 public constant TARGET_RATIO = 2; // 2x leverage
@@ -32,6 +36,10 @@ contract ETH2X is ERC20 {
     IPool public immutable POOL;
     IWrappedTokenGatewayV3 public immutable WRAPPED_TOKEN_GATEWAY;
 
+    /*//////////////////////////////////////////////////////////////
+                              CONSTRUCTOR
+    //////////////////////////////////////////////////////////////*/
+
     constructor() ERC20("ETH2X", "ETH2X") {
         USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
         WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
@@ -41,6 +49,10 @@ contract ETH2X is ERC20 {
         POOL = IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
         WRAPPED_TOKEN_GATEWAY = IWrappedTokenGatewayV3(0xA434D495249abE33E031Fe71a969B81f3c07950D);
     }
+
+    /*//////////////////////////////////////////////////////////////
+                            PUBLIC FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
 
     function deposit() public payable {
         // Supply ETH to Aave and recieve equal amount of aWETH
@@ -57,12 +69,9 @@ contract ETH2X is ERC20 {
         // Mint tokens to the caller to represent ownership of the pool
         uint256 amount = 1000e18;
         _mint(msg.sender, amount);
-
-        // Rebalance the position
-        rebalance();
     }
 
-    function rebalance() public {
+    function rebalance() external {
         (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = getAccountData();
 
         // Goal is to have totalCollateralBase be (totalDebtBase * TARGET_RATIO)
