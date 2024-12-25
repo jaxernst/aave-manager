@@ -25,6 +25,7 @@ contract ETH2X is ERC20 {
     // Uniswap
     address public immutable USDC;
     address public immutable WETH;
+    uint24 public immutable POOL_FEE;
     ISwapRouter public immutable SWAP_ROUTER;
 
     // Aave
@@ -34,6 +35,7 @@ contract ETH2X is ERC20 {
     constructor() ERC20("ETH2X", "ETH2X") {
         USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
         WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        POOL_FEE = 500; // 0.05%
         SWAP_ROUTER = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
 
         POOL = IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
@@ -67,17 +69,33 @@ contract ETH2X is ERC20 {
         // E.g. for 2x leverage, totalCollateralBase should be $100 worth of ETH for every $50 worth of USDC borrowed
 
         if (getLeverageRatio() < TARGET_RATIO) {
-            // Borrow more USDC
+            // 1. Borrow more USDC
             uint256 amountToBorrow = totalDebtBase * TARGET_RATIO - totalCollateralBase;
             POOL.borrow(USDC, amountToBorrow, 2, 0, address(this));
 
-            // TODO: Buy ETH on Uniswap
-            // ...
+            // 2. Buy ETH on Uniswap: https://docs.uniswap.org/contracts/v3/guides/swaps/single-swaps
+            // 2a. Approve the router to spend USDC (maybe we should just set infinite allowance in the constructor ?)
+            TransferHelper.safeApprove(USDC, address(SWAP_ROUTER), amountToBorrow);
 
-            // Deposit new ETH into Aave
-            WRAPPED_TOKEN_GATEWAY.depositETH{value: address(this).balance}(address(0), address(this), 0);
+            // 2b. Set up the swap
+            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+                tokenIn: USDC,
+                tokenOut: WETH,
+                fee: POOL_FEE,
+                recipient: address(this),
+                deadline: block.timestamp,
+                amountIn: amountToBorrow,
+                amountOutMinimum: 0, // TODO: Check the price of ETH via onchain oracle and set a minimum expected amount
+                sqrtPriceLimitX96: 0
+            });
+
+            // 2c. Execute the swap and get the amount of WETH received
+            uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
+
+            // 3. Deposit new WETH into Aave so we never have dormant ETH or WETH. Only assets held should be aWETH and USDC.
+            POOL.supply(WETH, amountOut, address(this), 0);
         } else {
-            // TODO: Sell ETH and repay USDC
+            // TODO: Withdraw ETH from Aave, swap for USDC and repay loan
         }
 
         lastRebalance = block.timestamp;
