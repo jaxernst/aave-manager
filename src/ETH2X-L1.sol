@@ -24,7 +24,7 @@ contract ETH2X is ERC20 {
 
     // Local variables
     uint256 public lastRebalance;
-    uint256 public constant TARGET_RATIO = 2; // 2x leverage
+    uint256 public constant TARGET_RATIO = 2e18; // 2x leverage
 
     // Uniswap
     address public immutable USDC;
@@ -160,6 +160,7 @@ contract ETH2X is ERC20 {
 
     function getLeverageRatio() public view returns (uint256) {
         (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = getAccountData();
-        return totalCollateralBase / totalDebtBase;
+        // Multiply by 1e18 before division to maintain precision
+        return (totalCollateralBase * 1e18) / totalDebtBase;
     }
 }
