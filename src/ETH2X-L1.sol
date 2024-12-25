@@ -104,7 +104,31 @@ contract ETH2X is ERC20 {
             // 3. Deposit new WETH into Aave so we never have dormant ETH or WETH. Only assets held should be aWETH and USDC.
             POOL.supply(WETH, amountOut, address(this), 0);
         } else {
-            // TODO: Withdraw ETH from Aave, swap for USDC and repay loan
+            // 1. Withdraw enough ETH from Aave to recalibrate to 2x leverage
+            uint256 amountToWithdraw = totalCollateralBase - (totalDebtBase * TARGET_RATIO);
+            POOL.withdraw(WETH, amountToWithdraw, address(this));
+
+            // 2. Swap ETH for USDC on Uniswap
+            // 2a. Approve the router to spend WETH
+            TransferHelper.safeApprove(WETH, address(SWAP_ROUTER), amountToWithdraw);
+
+            // 2b. Set up the swap
+            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+                tokenIn: WETH,
+                tokenOut: USDC,
+                fee: POOL_FEE,
+                recipient: address(this),
+                deadline: block.timestamp,
+                amountIn: amountToWithdraw,
+                amountOutMinimum: 0, // TODO: Check the price of ETH via onchain oracle and set a minimum expected amount
+                sqrtPriceLimitX96: 0
+            });
+
+            // 2c. Execute the swap and get the amount of USDC received
+            uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
+
+            // 3. Repay the loan
+            POOL.repay(USDC, amountOut, 2, address(this));
         }
 
         lastRebalance = block.timestamp;
