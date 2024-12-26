@@ -37,6 +37,13 @@ contract ETH2X is ERC20 {
     IWrappedTokenGatewayV3 public immutable WRAPPED_TOKEN_GATEWAY;
 
     /*//////////////////////////////////////////////////////////////
+                                 EVENTS
+    //////////////////////////////////////////////////////////////*/
+
+    event Mint(address indexed to, uint256 amount);
+    event Redeem(address indexed to, uint256 amount);
+
+    /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
@@ -54,7 +61,7 @@ contract ETH2X is ERC20 {
                             PUBLIC FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    function deposit() public payable {
+    function mint(address onBehalfOf) external payable {
         // Supply ETH to Aave and recieve equal amount of aWETH
         WRAPPED_TOKEN_GATEWAY.depositETH{value: msg.value}(address(0), address(this), 0);
 
@@ -68,14 +75,29 @@ contract ETH2X is ERC20 {
 
         // Mint tokens to the caller to represent ownership of the pool
         uint256 amount = 1000e18;
-        _mint(msg.sender, amount);
+        _mint(onBehalfOf, amount);
+        emit Mint(onBehalfOf, amount);
+    }
+
+    function redeem(uint256 amount) external {
+        // Burn tokens from the caller to represent ownership of the pool
+        // This includes a check to ensure the caller has enough tokens
+        _burn(msg.sender, amount);
+
+        // TODO: Withdraw the corresponding amount of WETH from Aave
+        // ...
+
+        // TODO: Unwrap the WETH and transfer it to the caller
+        // ...
+
+        emit Redeem(msg.sender, amount);
     }
 
     function rebalance() external {
         (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = getAccountData();
 
-        // Goal is to have totalCollateralBase be (totalDebtBase * TARGET_RATIO)
-        // E.g. for 2x leverage, totalCollateralBase should be $100 worth of ETH for every $50 worth of USDC borrowed
+        // Goal is for totalCollateralBase to always be (TARGET_RATIO / 1e18) * totalDebtBase
+        // E.g. for 2x leverage, totalCollateralBase should be $100 worth of ETH for every $50 worth of borrowed USDC
 
         if (getLeverageRatio() < TARGET_RATIO) {
             // 1. Borrow more USDC
@@ -94,14 +116,14 @@ contract ETH2X is ERC20 {
                 recipient: address(this),
                 deadline: block.timestamp,
                 amountIn: amountToBorrow,
-                amountOutMinimum: 0, // TODO: Check the price of ETH via onchain oracle and set a minimum expected amount
+                amountOutMinimum: 0, // TODO: Check the price of ETH onchain and set a minimum expected amount
                 sqrtPriceLimitX96: 0
             });
 
             // 2c. Execute the swap and get the amount of WETH received
             uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
 
-            // 3. Deposit new WETH into Aave so we never have dormant ETH or WETH. Only assets held should be aWETH and USDC.
+            // 3. Deposit new WETH into Aave
             POOL.supply(WETH, amountOut, address(this), 0);
         } else {
             // 1. Withdraw enough ETH from Aave to recalibrate to 2x leverage
@@ -120,7 +142,7 @@ contract ETH2X is ERC20 {
                 recipient: address(this),
                 deadline: block.timestamp,
                 amountIn: amountToWithdraw,
-                amountOutMinimum: 0, // TODO: Check the price of ETH via onchain oracle and set a minimum expected amount
+                amountOutMinimum: 0, // TODO: Check the price of ETH onchain and set a minimum expected amount
                 sqrtPriceLimitX96: 0
             });
 
