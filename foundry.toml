@@ -1,12 +1,18 @@
+
 [profile.default]
 src = "src"
 out = "out"
+evm_version = "cancun"
 libs = ["lib"]
 
 remappings = [
+  "forge-std/=lib/forge-std/src/",
   "@aave/=lib/aave-v3-origin/src/",
   "@uniswap/v3-periphery/=lib/v3-periphery/contracts/",
   "@openzeppelin/=lib/openzeppelin-contracts/contracts/"
 ]
+
+[rpc_endpoints]
+mainnet = "${ETH_RPC_URL}"
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options

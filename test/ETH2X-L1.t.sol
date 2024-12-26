@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 import {ETH2X} from "../src/ETH2X-L1.sol";
 
 contract ETH2XTest is Test {
     ETH2X public eth2x;
 
     function setUp() public {
+        vm.createSelectFork("mainnet");
         eth2x = new ETH2X();
     }
 
@@ -27,5 +28,10 @@ contract ETH2XTest is Test {
         // We have to multiply the numerator by 1e18 to maintain precision
         uint256 preciseRatio = (totalCollateralBase * 1e18) / totalDebtBase;
         assertEq(preciseRatio, 1966551082233549994);
+    }
+
+    function test_GetPriceOnchain() public view {
+        uint256 price = eth2x.ethPrice();
+        console.log("ETH Price:", price);
     }
 }

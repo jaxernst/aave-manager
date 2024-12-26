@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.21;
+pragma solidity 0.8.28;
 
 import {IPool} from "@aave/core/contracts/interfaces/IPool.sol";
 import {IWrappedTokenGatewayV3} from "@aave/periphery/contracts/misc/interfaces/IWrappedTokenGatewayV3.sol";
@@ -7,6 +7,7 @@ import {TransferHelper} from "@uniswap/v3-periphery/libraries/TransferHelper.sol
 import {ERC20} from "@openzeppelin/token/ERC20/ERC20.sol";
 
 import {ISwapRouter} from "./interfaces/ISwapRouter.sol";
+import {ICheckTheChain} from "./interfaces/ICheckTheChain.sol";
 
 /**
  * @title ETH2X
@@ -31,6 +32,7 @@ contract ETH2X is ERC20 {
     address public immutable WETH;
     uint24 public immutable POOL_FEE;
     ISwapRouter public immutable SWAP_ROUTER;
+    ICheckTheChain public immutable CHECK_THE_CHAIN;
 
     // Aave
     IPool public immutable POOL;
@@ -52,6 +54,7 @@ contract ETH2X is ERC20 {
         WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
         POOL_FEE = 500; // 0.05%
         SWAP_ROUTER = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+        CHECK_THE_CHAIN = ICheckTheChain(0x0000000000cDC1F8d393415455E382c30FBc0a84);
 
         POOL = IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
         WRAPPED_TOKEN_GATEWAY = IWrappedTokenGatewayV3(0xA434D495249abE33E031Fe71a969B81f3c07950D);
@@ -70,11 +73,11 @@ contract ETH2X is ERC20 {
          * Options: Give the caller tokens based on...
          * 1. the price of ETH at the time of deposit
          * 2. the amount of ETH deposited compared to the total amount of aWETH in the contract
-         * 3. ??
+         * 3. ?? I'm not sure if any of the approaches above are correct
          */
 
         // Mint tokens to the caller to represent ownership of the pool
-        uint256 amount = 1000e18;
+        uint256 amount = calculateTokensToMint(msg.value);
         _mint(onBehalfOf, amount);
         emit Mint(onBehalfOf, amount);
     }
@@ -184,5 +187,39 @@ contract ETH2X is ERC20 {
         (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = getAccountData();
         // Multiply by 1e18 before division to maintain precision
         return (totalCollateralBase * 1e18) / totalDebtBase;
+    }
+
+    /**
+     * @notice Calculate the amount of ETH2X tokens to mint based on the amount of ETH deposited.
+     * @param depositAmount The amount of ETH to deposit
+     * @return The amount of tokens to mint
+     */
+    function calculateTokensToMint(uint256 depositAmount) public view returns (uint256) {
+        (uint256 totalCollateralBefore, uint256 totalDebtBefore,,,,) = getAccountData();
+        uint256 tokenSupply = totalSupply();
+
+        // Calculate amount of tokens to mint based on the proportional ownership
+        uint256 amount;
+        if (tokenSupply == 0) {
+            // First deposit - set initial exchange rate of 1000 tokens = 1 ETH
+            amount = depositAmount * 1000;
+        } else {
+            // Calculate the net value (collateral - debt) before and after deposit
+            uint256 netValueBefore = totalCollateralBefore - totalDebtBefore;
+            uint256 depositAmountValue = depositAmount * ethPrice();
+            uint256 totalCollateralAfter = totalCollateralBefore + depositAmountValue;
+            uint256 netValueAfter = totalCollateralAfter - totalDebtBefore;
+            uint256 valueAdded = netValueAfter - netValueBefore;
+
+            // Mint tokens proportional to the value added compared to existing value
+            amount = (valueAdded * tokenSupply) / netValueBefore;
+        }
+
+        return amount;
+    }
+
+    function ethPrice() public view returns (uint256) {
+        (uint256 price,) = CHECK_THE_CHAIN.checkPrice(WETH);
+        return price;
     }
 }
