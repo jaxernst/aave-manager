@@ -44,6 +44,7 @@ contract ETH2X is ERC20 {
 
     event Mint(address indexed to, uint256 amount);
     event Redeem(address indexed to, uint256 amount);
+    event Rebalance(uint256 leverageRatio, uint256 timestamp);
 
     /*//////////////////////////////////////////////////////////////
                                  ERRORS
@@ -131,11 +132,12 @@ contract ETH2X is ERC20 {
 
     function rebalance() public {
         (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = getAccountData();
+        uint256 leverageRatio = getLeverageRatio();
 
         // Goal is for totalCollateralBase to always be (TARGET_RATIO / 1e18) * totalDebtBase
         // E.g. for 2x leverage, totalCollateralBase should be $100 worth of ETH for every $50 worth of borrowed USDC
 
-        if (getLeverageRatio() < TARGET_RATIO) {
+        if (leverageRatio < TARGET_RATIO) {
             // 1. Borrow more USDC
             uint256 amountToBorrow = (totalCollateralBase * TARGET_RATIO / 1e18) - totalDebtBase;
             POOL.borrow(USDC, amountToBorrow, 2, 0, address(this));
@@ -190,6 +192,7 @@ contract ETH2X is ERC20 {
         }
 
         lastRebalance = block.timestamp;
+        emit Rebalance(leverageRatio, block.timestamp);
     }
 
     /**
