@@ -46,6 +46,12 @@ contract ETH2X is ERC20 {
     event Redeem(address indexed to, uint256 amount);
 
     /*//////////////////////////////////////////////////////////////
+                                 ERRORS
+    //////////////////////////////////////////////////////////////*/
+
+    error InsufficientCollateral();
+
+    /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
@@ -64,6 +70,11 @@ contract ETH2X is ERC20 {
                             PUBLIC FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /**
+     * @notice Mint ETH2X tokens to the caller
+     * @dev We don't need to rebalance internally because worst case, we have more collateral than debt.
+     * @param onBehalfOf The address to mint tokens to
+     */
     function mint(address onBehalfOf) external payable {
         // Supply ETH to Aave and recieve equal amount of aWETH
         WRAPPED_TOKEN_GATEWAY.depositETH{value: msg.value}(address(0), address(this), 0);
@@ -82,21 +93,43 @@ contract ETH2X is ERC20 {
         emit Mint(onBehalfOf, amount);
     }
 
+    /**
+     * @notice Burn ETH2X tokens to redeem underlying ETH
+     * @dev We DO need to rebalance internally here, because it's possible for somebody to withdraw enough ETH to
+     *      where the USDC loan gets liquidated.
+     * @param amount The amount of ETH2X tokens to burn
+     */
     function redeem(uint256 amount) external {
-        // Burn tokens from the caller to represent ownership of the pool
+        // Burn tokens from the caller which represents their ownership of the pool decreasing.
         // This includes a check to ensure the caller has enough tokens
         _burn(msg.sender, amount);
 
-        // TODO: Withdraw the corresponding amount of WETH from Aave
-        // ...
+        uint256 ethToRedeem = calculateEthToRedeem(amount);
 
-        // TODO: Unwrap the WETH and transfer it to the caller
-        // ...
+        // If we withdraw too much WETH from Aave in one go, we could get liquidated.
+        // Open question: if we rebalance within the same transaction, will the loan still be liquidatable?
+        // The below assumes no
 
-        emit Redeem(msg.sender, amount);
+        // Withdraw the corresponding amount of WETH from Aave
+        (uint256 totalCollateral,,,,,) = getAccountData();
+        uint256 ethWorthOfCollateral = totalCollateral / ethPrice();
+
+        if (ethWorthOfCollateral < ethToRedeem) {
+            revert InsufficientCollateral();
+        }
+        // Withdraw the corresponding amount of WETH from Aave
+        POOL.withdraw(WETH, ethToRedeem, address(this));
+
+        // Unwrap the WETH and transfer it to the caller
+        TransferHelper.safeTransferETH(msg.sender, ethToRedeem);
+
+        // Rebalance the pool
+        rebalance();
+
+        emit Redeem(msg.sender, ethToRedeem);
     }
 
-    function rebalance() external {
+    function rebalance() public {
         (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = getAccountData();
 
         // Goal is for totalCollateralBase to always be (TARGET_RATIO / 1e18) * totalDebtBase
@@ -104,7 +137,7 @@ contract ETH2X is ERC20 {
 
         if (getLeverageRatio() < TARGET_RATIO) {
             // 1. Borrow more USDC
-            uint256 amountToBorrow = totalDebtBase * TARGET_RATIO - totalCollateralBase;
+            uint256 amountToBorrow = (totalCollateralBase * TARGET_RATIO / 1e18) - totalDebtBase;
             POOL.borrow(USDC, amountToBorrow, 2, 0, address(this));
 
             // 2. Buy ETH on Uniswap: https://docs.uniswap.org/contracts/v3/guides/swaps/single-swaps
@@ -214,6 +247,30 @@ contract ETH2X is ERC20 {
             // Mint tokens proportional to the value added compared to existing value
             amount = (valueAdded * tokenSupply) / netValueBefore;
         }
+
+        return amount;
+    }
+
+    /**
+     * @notice Calculate the amount of ETH to redeem based on the amount of ETH2X tokens burned.
+     * @param redeemAmount The amount of ETH2X tokens to burn in exchange for the underlying ETH
+     * @return The amount of ETH to redeem
+     */
+    function calculateEthToRedeem(uint256 redeemAmount) public view returns (uint256) {
+        (uint256 totalCollateralBefore, uint256 totalDebtBefore,,,,) = getAccountData();
+        uint256 tokenSupply = totalSupply();
+
+        // Calculate the percentage of the pool that the redeemer owns
+        uint256 percentageOwned = (redeemAmount * 1e18) / tokenSupply;
+
+        // If we had to put all assets into ETH, how much would it be worth?
+        uint256 totalCollateralValue = totalCollateralBefore - totalDebtBefore;
+
+        // How much of that value does the redeemer own?
+        uint256 redeemerValue = totalCollateralValue * percentageOwned;
+
+        // How much ETH is that worth?
+        uint256 amount = redeemerValue / ethPrice();
 
         return amount;
     }
