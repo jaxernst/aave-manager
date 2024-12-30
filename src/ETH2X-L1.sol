@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.28;
 
+import {console} from "forge-std/Test.sol";
+
 import {IPool} from "@aave/core/contracts/interfaces/IPool.sol";
 import {IWrappedTokenGatewayV3} from "@aave/periphery/contracts/misc/interfaces/IWrappedTokenGatewayV3.sol";
 import {TransferHelper} from "@uniswap/v3-periphery/libraries/TransferHelper.sol";
@@ -137,64 +139,17 @@ contract ETH2X is ERC20 {
         // Goal is for totalCollateralBase to always be (TARGET_RATIO / 1e18) * totalDebtBase
         // E.g. for 2x leverage, totalCollateralBase should be $100 worth of ETH for every $50 worth of borrowed USDC
 
+        // If we have too much debt, we need to borrow more USDC and swap it for ETH on Uniswap
+        // If we have too much collateral, we need to withdraw some ETH from Aave and swap it for USDC on Uniswap
+
         if (leverageRatio < TARGET_RATIO) {
-            // 1. Borrow more USDC
-            uint256 amountToBorrow = (totalCollateralBase * TARGET_RATIO / 1e18) - totalDebtBase;
-            POOL.borrow(USDC, amountToBorrow, 2, 0, address(this));
-
-            // 2. Buy ETH on Uniswap: https://docs.uniswap.org/contracts/v3/guides/swaps/single-swaps
-            // 2a. Approve the router to spend USDC (maybe we should just set infinite allowance in the constructor ?)
-            TransferHelper.safeApprove(USDC, address(SWAP_ROUTER), amountToBorrow);
-
-            uint256 expectedEthAmountOut = amountToBorrow * 1e18 / ethPrice();
-
-            // 2b. Set up the swap
-            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-                tokenIn: USDC,
-                tokenOut: WETH,
-                fee: POOL_FEE,
-                recipient: address(this),
-                deadline: block.timestamp,
-                amountIn: amountToBorrow,
-                // Allow 0.5% slippage
-                amountOutMinimum: expectedEthAmountOut - (expectedEthAmountOut / 200),
-                sqrtPriceLimitX96: 0
-            });
-
-            // 2c. Execute the swap and get the amount of WETH received
-            uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
-
-            // 3. Deposit new WETH into Aave
-            POOL.supply(WETH, amountOut, address(this), 0);
+            // 1. Borrow more USDC (adjust for it being 6 decimals)
+            uint256 amountToBorrow = ((totalCollateralBase / ((TARGET_RATIO) / 1e18)) - totalDebtBase) / 100;
+            _borrowSwapAndSupply(amountToBorrow);
         } else {
             // 1. Withdraw enough ETH from Aave to recalibrate to 2x leverage
             uint256 amountToWithdraw = totalCollateralBase - (totalDebtBase * TARGET_RATIO / 1e18);
-            POOL.withdraw(WETH, amountToWithdraw, address(this));
-
-            // 2. Swap ETH for USDC on Uniswap
-            // 2a. Approve the router to spend WETH
-            TransferHelper.safeApprove(WETH, address(SWAP_ROUTER), amountToWithdraw);
-
-            uint256 expectedUsdcAmountOut = amountToWithdraw * ethPrice();
-
-            // 2b. Set up the swap
-            ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-                tokenIn: WETH,
-                tokenOut: USDC,
-                fee: POOL_FEE,
-                recipient: address(this),
-                deadline: block.timestamp,
-                amountIn: amountToWithdraw,
-                // Allow 0.5% slippage
-                amountOutMinimum: expectedUsdcAmountOut - (expectedUsdcAmountOut / 200),
-                sqrtPriceLimitX96: 0
-            });
-
-            // 2c. Execute the swap and get the amount of USDC received
-            uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
-
-            // 3. Repay the loan
-            POOL.repay(USDC, amountOut, 2, address(this));
+            _withdrawSwapAndRepay(amountToWithdraw);
         }
 
         lastRebalance = block.timestamp;
@@ -227,6 +182,13 @@ contract ETH2X is ERC20 {
 
     function getLeverageRatio() public view returns (uint256) {
         (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = getAccountData();
+
+        // Add check for zero debt
+        if (totalDebtBase == 0) {
+            // return type(uint256).max; // Return max value to indicate infinite leverage
+            return 0; // Return 0 to indicate no existing loan
+        }
+
         // Multiply by 1e18 before division to maintain precision
         return (totalCollateralBase * 1e18) / totalDebtBase;
     }
@@ -244,7 +206,7 @@ contract ETH2X is ERC20 {
         uint256 amount;
         if (tokenSupply == 0) {
             // First deposit - set initial exchange rate of 1000 tokens = 1 ETH
-            amount = depositAmount * 1000;
+            amount = depositAmount * 10000;
         } else {
             // Calculate the net value (collateral - debt) before and after deposit
             uint256 netValueBefore = totalCollateralBefore - totalDebtBefore;
@@ -289,5 +251,67 @@ contract ETH2X is ERC20 {
         (uint256 price,) = CHECK_THE_CHAIN.checkPrice(WETH);
         // Convert to 12 digits of precision to match Aave's price feed
         return price * 100;
+    }
+
+    function _borrowSwapAndSupply(uint256 amountToBorrow) internal {
+        POOL.borrow(USDC, amountToBorrow, 2, 0, address(this));
+
+        // 2. Buy ETH on Uniswap: https://docs.uniswap.org/contracts/v3/guides/swaps/single-swaps
+        // 2a. Approve the router to spend USDC (maybe we should just set infinite allowance in the constructor ?)
+        TransferHelper.safeApprove(USDC, address(SWAP_ROUTER), amountToBorrow);
+
+        // TODO: Use a live price feed for this
+        uint256 expectedEthAmountOut = 0;
+
+        // 2b. Set up the swap
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            tokenIn: USDC,
+            tokenOut: WETH,
+            fee: POOL_FEE,
+            recipient: address(this),
+            deadline: block.timestamp,
+            amountIn: amountToBorrow,
+            // Allow 0.5% slippage
+            amountOutMinimum: expectedEthAmountOut,
+            sqrtPriceLimitX96: 0
+        });
+
+        // 2c. Execute the swap and get the amount of WETH received
+        uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
+
+        // 3. Deposit new WETH into Aave
+        TransferHelper.safeApprove(WETH, address(POOL), amountOut);
+        POOL.supply(WETH, amountOut, address(this), 0);
+    }
+
+    function _withdrawSwapAndRepay(uint256 amountToWithdraw) internal {
+        POOL.withdraw(WETH, amountToWithdraw, address(this));
+
+        // 2. Swap ETH for USDC on Uniswap
+        // 2a. Approve the router to spend WETH
+        TransferHelper.safeApprove(WETH, address(SWAP_ROUTER), amountToWithdraw);
+
+        // TODO: Use a live price feed for this
+        uint256 expectedUsdcAmountOut = 0;
+
+        // 2b. Set up the swap
+        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+            tokenIn: WETH,
+            tokenOut: USDC,
+            fee: POOL_FEE,
+            recipient: address(this),
+            deadline: block.timestamp,
+            amountIn: amountToWithdraw,
+            // Allow 0.5% slippage
+            amountOutMinimum: expectedUsdcAmountOut - (expectedUsdcAmountOut / 200),
+            sqrtPriceLimitX96: 0
+        });
+
+        // 2c. Execute the swap and get the amount of USDC received
+        uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
+
+        // 3. If we already have a loan, repay it. If we don't already have a loan, we don't need to do anything
+        TransferHelper.safeApprove(USDC, address(POOL), amountOut);
+        POOL.repay(USDC, amountOut, 2, address(this));
     }
 }

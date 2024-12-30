@@ -58,15 +58,49 @@ contract ETH2XTest is Test {
         assertEq(totalDebtBefore, 0);
 
         eth2x.mint{value: 1 ether}(address(1));
-        uint256 tokensPerEth = 1000; // The initial exchange rate
+        uint256 tokensPerEth = 10000; // The initial exchange rate
         assertEq(eth2x.balanceOf(address(1)), tokensPerEth * 1e18);
         assertEq(eth2x.totalSupply(), tokensPerEth * 1e18);
 
         (uint256 totalCollateralAfter, uint256 totalDebtAfter,,,,) = eth2x.getAccountData();
+
         // Depositing 1 ETH should give us 1 aWETH value in collateral (with a 0.05% buffer for Aave vs Uniswap oracle differences)
         assertGt(totalCollateralAfter, eth2x.ethPrice() * 9995 / 10000);
         assertLt(totalCollateralAfter, eth2x.ethPrice() * 10005 / 10000);
-        // We haven't borrowed anything yet, so debt should be 0
+
+        // We haven't borrowed anything yet, so debt should be 0 and leverage ratio should be infinite
         assertEq(totalDebtAfter, 0);
+        assertEq(eth2x.getLeverageRatio(), 0);
+    }
+
+    function test_Rebalance() public {
+        console.log("minting 1 ETH worth of ETH2X tokens");
+        eth2x.mint{value: 1 ether}(address(1));
+        (uint256 totalCollateralBefore,,,,,) = eth2x.getAccountData();
+        assertLt(eth2x.getLeverageRatio(), eth2x.TARGET_RATIO());
+        console.log("totalCollateralBefore", totalCollateralBefore);
+        console.log("usdcToBorrow", (totalCollateralBefore / (eth2x.TARGET_RATIO() / 1e18) / 100));
+        console.log("rebalancing...");
+        eth2x.rebalance();
+
+        (uint256 totalCollateralAfter, uint256 totalDebtAfter,,,,) = eth2x.getAccountData();
+
+        // We should have 1.5 ETH (because we borrowed 0.5 ETH worth of USDC and swapped it) in collateral and 0.75 (??) ETH worth of USDC in debt. Allow a 0.05% buffer
+        console.log("totalCollateralAfter", totalCollateralAfter);
+        // assertGt(totalCollateralAfter, eth2x.ethPrice()); // Greater than 1 ETH
+        // assertLt(totalCollateralAfter, eth2x.ethPrice() * 150 / 100); // Less than 1.5 ETH
+
+        console.log("totalDebtAfter", totalDebtAfter);
+        // assertGt(totalDebt, eth2x.ethPrice() * 4995 / 10000);
+        // assertLt(totalDebt, eth2x.ethPrice() * 5005 / 10000);
+
+        console.log("afterRatio", eth2x.getLeverageRatio());
+
+        // Now let's check if rebalancing again will do nothing
+        // eth2x.rebalance();
+        // (uint256 totalCollateralAfter2, uint256 totalDebtAfter2,,,,) = eth2x.getAccountData();
+        // console.log("totalCollateralAfter2", totalCollateralAfter2);
+        // console.log("totalDebtAfter2", totalDebtAfter2);
+        // console.log("afterRatio2", eth2x.getLeverageRatio());
     }
 }
