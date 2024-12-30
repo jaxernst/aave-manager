@@ -144,8 +144,13 @@ contract ETH2X is ERC20 {
 
         if (leverageRatio < TARGET_RATIO) {
             // 1. Borrow more USDC (adjust for it being 6 decimals)
-            uint256 amountToBorrow = ((totalCollateralBase / ((TARGET_RATIO) / 1e18)) - totalDebtBase) / 100;
-            _borrowSwapAndSupply(amountToBorrow);
+            uint256 amountToBorrowFirst = ((totalCollateralBase) * 414 / 1000) / 100;
+            _borrowSwapAndSupply(amountToBorrowFirst);
+
+            // Levering up to 2x requires 2 loops, so we have to borrow more USDC and swap it for ETH again
+            (uint256 totalCollateralBaseSecond,,,,,) = getAccountData();
+            uint256 amountToBorrowSecond = ((totalCollateralBaseSecond) * 414 / 1000) / 100;
+            _borrowSwapAndSupply(amountToBorrowSecond);
         } else {
             // 1. Withdraw enough ETH from Aave to recalibrate to 2x leverage
             uint256 amountToWithdraw = totalCollateralBase - (totalDebtBase * TARGET_RATIO / 1e18);

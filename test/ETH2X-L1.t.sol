@@ -79,28 +79,20 @@ contract ETH2XTest is Test {
         (uint256 totalCollateralBefore,,,,,) = eth2x.getAccountData();
         assertLt(eth2x.getLeverageRatio(), eth2x.TARGET_RATIO());
         console.log("totalCollateralBefore", totalCollateralBefore);
-        console.log("usdcToBorrow", (totalCollateralBefore / (eth2x.TARGET_RATIO() / 1e18) / 100));
         console.log("rebalancing...");
         eth2x.rebalance();
 
         (uint256 totalCollateralAfter, uint256 totalDebtAfter,,,,) = eth2x.getAccountData();
 
-        // We should have 1.5 ETH (because we borrowed 0.5 ETH worth of USDC and swapped it) in collateral and 0.75 (??) ETH worth of USDC in debt. Allow a 0.05% buffer
+        // We should have 2 ETH in collateral and 1 ETH worth of USDC in debt. Allow a 1% buffer
         console.log("totalCollateralAfter", totalCollateralAfter);
-        // assertGt(totalCollateralAfter, eth2x.ethPrice()); // Greater than 1 ETH
-        // assertLt(totalCollateralAfter, eth2x.ethPrice() * 150 / 100); // Less than 1.5 ETH
+        assertGt(totalCollateralAfter, eth2x.ethPrice() * 195 / 100); // Greater than 1.95 ETH
+        assertLt(totalCollateralAfter, eth2x.ethPrice() * 205 / 100); // Less than 2.05 ETH
 
         console.log("totalDebtAfter", totalDebtAfter);
-        // assertGt(totalDebt, eth2x.ethPrice() * 4995 / 10000);
-        // assertLt(totalDebt, eth2x.ethPrice() * 5005 / 10000);
+        assertGt(totalDebtAfter, eth2x.ethPrice() * 95 / 100); // Greater than 0.95 ETH worth of USDC
+        assertLt(totalDebtAfter, eth2x.ethPrice() * 105 / 100); // Less than 1.05 ETH worth of USDC
 
-        console.log("afterRatio", eth2x.getLeverageRatio());
-
-        // Now let's check if rebalancing again will do nothing
-        // eth2x.rebalance();
-        // (uint256 totalCollateralAfter2, uint256 totalDebtAfter2,,,,) = eth2x.getAccountData();
-        // console.log("totalCollateralAfter2", totalCollateralAfter2);
-        // console.log("totalDebtAfter2", totalDebtAfter2);
-        // console.log("afterRatio2", eth2x.getLeverageRatio());
+        console.log("afterRatio", eth2x.getLeverageRatio()); // Should be very close to 2
     }
 }
