@@ -146,6 +146,8 @@ contract ETH2X is ERC20 {
             // 2a. Approve the router to spend USDC (maybe we should just set infinite allowance in the constructor ?)
             TransferHelper.safeApprove(USDC, address(SWAP_ROUTER), amountToBorrow);
 
+            uint256 expectedEthAmountOut = amountToBorrow * 1e18 / ethPrice();
+
             // 2b. Set up the swap
             ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
                 tokenIn: USDC,
@@ -154,7 +156,8 @@ contract ETH2X is ERC20 {
                 recipient: address(this),
                 deadline: block.timestamp,
                 amountIn: amountToBorrow,
-                amountOutMinimum: 0, // TODO: Check the price of ETH onchain and set a minimum expected amount
+                // Allow 0.5% slippage
+                amountOutMinimum: expectedEthAmountOut - (expectedEthAmountOut / 200),
                 sqrtPriceLimitX96: 0
             });
 
@@ -165,12 +168,14 @@ contract ETH2X is ERC20 {
             POOL.supply(WETH, amountOut, address(this), 0);
         } else {
             // 1. Withdraw enough ETH from Aave to recalibrate to 2x leverage
-            uint256 amountToWithdraw = totalCollateralBase - (totalDebtBase * TARGET_RATIO);
+            uint256 amountToWithdraw = totalCollateralBase - (totalDebtBase * TARGET_RATIO / 1e18);
             POOL.withdraw(WETH, amountToWithdraw, address(this));
 
             // 2. Swap ETH for USDC on Uniswap
             // 2a. Approve the router to spend WETH
             TransferHelper.safeApprove(WETH, address(SWAP_ROUTER), amountToWithdraw);
+
+            uint256 expectedUsdcAmountOut = amountToWithdraw * ethPrice();
 
             // 2b. Set up the swap
             ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
@@ -180,7 +185,8 @@ contract ETH2X is ERC20 {
                 recipient: address(this),
                 deadline: block.timestamp,
                 amountIn: amountToWithdraw,
-                amountOutMinimum: 0, // TODO: Check the price of ETH onchain and set a minimum expected amount
+                // Allow 0.5% slippage
+                amountOutMinimum: expectedUsdcAmountOut - (expectedUsdcAmountOut / 200),
                 sqrtPriceLimitX96: 0
             });
 
