@@ -8,7 +8,7 @@ contract ETH2XTest is Test {
     ETH2X public eth2x;
 
     function setUp() public {
-        vm.createSelectFork("mainnet");
+        vm.createSelectFork("mainnet", 21512799);
         eth2x = new ETH2X();
     }
 
@@ -32,6 +32,13 @@ contract ETH2XTest is Test {
 
     function test_GetPriceOnchain() public view {
         uint256 price = eth2x.ethPrice();
-        console.log("ETH Price:", price);
+        assertEq(price, 3399882244);
+    }
+
+    function test_Deposit() public {
+        eth2x.mint{value: 1 ether}(address(1));
+        uint256 tokensPerEth = 1000; // The initial exchange rate
+        assertEq(eth2x.balanceOf(address(1)), tokensPerEth * 1e18);
+        assertEq(eth2x.totalSupply(), tokensPerEth * 1e18);
     }
 }
