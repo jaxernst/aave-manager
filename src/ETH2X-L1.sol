@@ -284,8 +284,10 @@ contract ETH2X is ERC20 {
         return amount;
     }
 
+    /// @return Price of ETH in USDC with 12 digits of precision
     function ethPrice() public view returns (uint256) {
         (uint256 price,) = CHECK_THE_CHAIN.checkPrice(WETH);
-        return price;
+        // Convert to 12 digits of precision to match Aave's price feed
+        return price * 100;
     }
 }
