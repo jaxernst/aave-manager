@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.28;
 
+import {console} from "forge-std/Test.sol";
+
 import {IPool} from "@aave/core/contracts/interfaces/IPool.sol";
 import {IWrappedTokenGatewayV3} from "@aave/periphery/contracts/misc/interfaces/IWrappedTokenGatewayV3.sol";
 import {TransferHelper} from "@uniswap/v3-periphery/libraries/TransferHelper.sol";
@@ -51,6 +53,7 @@ contract ETH2X is ERC20 {
     //////////////////////////////////////////////////////////////*/
 
     error InsufficientCollateral();
+    error NothingToRedeem();
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
@@ -109,11 +112,15 @@ contract ETH2X is ERC20 {
      * @param amount The amount of ETH2X tokens to burn
      */
     function redeem(uint256 amount) external {
+        uint256 ethToRedeem = calculateEthToRedeem(amount);
+
         // Burn tokens from the caller which represents their ownership of the pool decreasing.
         // This includes a check to ensure the caller has enough tokens
         _burn(msg.sender, amount);
 
-        uint256 ethToRedeem = calculateEthToRedeem(amount);
+        if (ethToRedeem == 0) {
+            revert NothingToRedeem();
+        }
 
         // If we withdraw too much WETH from Aave in one go, we could get liquidated.
         // Open question: if we rebalance within the same transaction, will the loan still be liquidatable?
@@ -121,12 +128,16 @@ contract ETH2X is ERC20 {
 
         // Withdraw the corresponding amount of WETH from Aave
         (uint256 totalCollateral,,,,,) = getAccountData();
-        uint256 ethWorthOfCollateral = totalCollateral / ethPrice();
+        uint256 ethWorthOfCollateral = (totalCollateral * 1e18) / ethPrice();
+
+        console.log("ethWorthOfCollateral", ethWorthOfCollateral);
 
         if (ethWorthOfCollateral < ethToRedeem) {
             revert InsufficientCollateral();
         }
+
         // Withdraw the corresponding amount of WETH from Aave
+        // TODO: THE ERROR IS HAPPENING HERE
         POOL.withdraw(WETH, ethToRedeem, address(this));
 
         // Unwrap the WETH and transfer it to the caller
@@ -154,6 +165,7 @@ contract ETH2X is ERC20 {
             uint256 amountToBorrow = ((totalCollateralBase / ((TARGET_RATIO) / 1e18)) - totalDebtBase) / 100;
             _borrowUsdcSwapForEthAndSupply(amountToBorrow);
 
+            // Nested rebalance if we can't get far enough in one go due to Aave LTV limits
             if (getLeverageRatio() > TARGET_RATIO) {
                 (uint256 totalCollateralBase2, uint256 totalDebtBase2,,,,) = getAccountData();
                 uint256 amountToBorrow2 = ((totalCollateralBase2 / ((TARGET_RATIO) / 1e18)) - totalDebtBase2) / 100;
@@ -238,14 +250,13 @@ contract ETH2X is ERC20 {
      * @return The amount of ETH to redeem
      */
     function calculateEthToRedeem(uint256 redeemAmount) public view returns (uint256) {
-        (uint256 totalCollateralBefore, uint256 totalDebtBefore,,,,) = getAccountData();
-        uint256 tokenSupply = totalSupply();
+        (uint256 collateral, uint256 debt,,,,) = getAccountData();
 
-        // Calculate the percentage of the pool that the redeemer owns
-        uint256 percentageOwned = (redeemAmount * 1e18) / tokenSupply;
+        // Calculate the percentage of the pool that the tokens represent
+        uint256 percentageOwned = (redeemAmount * 1e18) / totalSupply();
 
         // If we had to put all assets into ETH, how much would it be worth?
-        uint256 totalCollateralValue = totalCollateralBefore - totalDebtBefore;
+        uint256 totalCollateralValue = collateral - debt;
 
         // How much of that value does the redeemer own?
         uint256 redeemerValue = totalCollateralValue * percentageOwned;

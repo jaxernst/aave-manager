@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 import {IPool} from "@aave/core/contracts/interfaces/IPool.sol";
 import {Strings} from "@openzeppelin/utils/Strings.sol";
 
@@ -98,5 +98,29 @@ contract ETH2XTest is Test {
         // Expect the leverage ratio to be 2x (with a 1% buffer)
         assertGt(eth2x.getLeverageRatio(), eth2x.TARGET_RATIO() * 99 / 100);
         assertLt(eth2x.getLeverageRatio(), eth2x.TARGET_RATIO() * 101 / 100);
+    }
+
+    function test_Redeem() public {
+        address user = address(1);
+        eth2x.mint{value: 1 ether}(user);
+        uint256 tokensPerEth = 10000; // The initial exchange rate
+        uint256 tokenBalance = eth2x.balanceOf(user);
+        assertEq(tokenBalance, tokensPerEth * 1e18);
+
+        eth2x.rebalance();
+        eth2x.rebalance();
+        eth2x.rebalance();
+
+        // Calculate the amount of ETH to redeem (should be within 0.1% of 1 ETH due to Uniswap fees)
+        uint256 ethToRedeem = eth2x.calculateEthToRedeem(tokenBalance);
+        console.log("tokenBalance", tokenBalance);
+        console.log("ethToRedeemFromTest", ethToRedeem);
+        assertGt(ethToRedeem, 1 ether * 999 / 1000);
+        assertLt(ethToRedeem, 1 ether);
+
+        // Redeem 10% of the user's tokens
+        vm.prank(user);
+        eth2x.redeem(tokenBalance / 10);
+        assertEq(address(1).balance, ethToRedeem / 10);
     }
 }
