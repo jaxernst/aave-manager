@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.28;
 
-import {console} from "forge-std/Test.sol";
-
 import {IPool} from "@aave/core/contracts/interfaces/IPool.sol";
 import {IWrappedTokenGatewayV3} from "@aave/periphery/contracts/misc/interfaces/IWrappedTokenGatewayV3.sol";
 import {TransferHelper} from "@uniswap/v3-periphery/libraries/TransferHelper.sol";
+import {IWETH} from "@aave/core/contracts/misc/interfaces/IWETH.sol";
 import {ERC20} from "@openzeppelin/token/ERC20/ERC20.sol";
 
 import {ISwapRouter} from "./interfaces/ISwapRouter.sol";
@@ -82,12 +81,19 @@ contract ETH2X is ERC20 {
                             PUBLIC FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Allow users to mint tokens by sending ETH to the contract
+    receive() external payable {
+        if (msg.sender != address(WETH)) {
+            mint(msg.sender);
+        }
+    }
+
     /**
      * @notice Mint ETH2X tokens to the caller
      * @dev We don't need to rebalance internally because worst case, we have more collateral than debt.
      * @param onBehalfOf The address to mint tokens to
      */
-    function mint(address onBehalfOf) external payable {
+    function mint(address onBehalfOf) public payable {
         // Supply ETH to Aave and recieve equal amount of aWETH
         WRAPPED_TOKEN_GATEWAY.depositETH{value: msg.value}(address(0), address(this), 0);
 
@@ -126,21 +132,24 @@ contract ETH2X is ERC20 {
         // Open question: if we rebalance within the same transaction, will the loan still be liquidatable?
         // The below assumes no
 
+        // ^ Update: I think the answer is yes. From the docs:
+        // "If user has any existing debt backed by the underlying token, then the maximum `amount` available to withdraw is the `amount` that will not leave user's health factor < 1 after withdrawal."
+        // https://aave.com/docs/developers/smart-contracts/pool#write-methods-withdraw
+
         // Withdraw the corresponding amount of WETH from Aave
         (uint256 totalCollateral,,,,,) = getAccountData();
         uint256 ethWorthOfCollateral = (totalCollateral * 1e18) / ethPrice();
 
-        console.log("ethWorthOfCollateral", ethWorthOfCollateral);
-
+        // Check if we have enough collateral to cover the withdrawal
         if (ethWorthOfCollateral < ethToRedeem) {
             revert InsufficientCollateral();
         }
 
         // Withdraw the corresponding amount of WETH from Aave
-        // TODO: THE ERROR IS HAPPENING HERE
         POOL.withdraw(WETH, ethToRedeem, address(this));
 
         // Unwrap the WETH and transfer it to the caller
+        IWETH(WETH).withdraw(ethToRedeem);
         TransferHelper.safeTransferETH(msg.sender, ethToRedeem);
 
         // Rebalance the pool
