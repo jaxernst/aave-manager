@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {IPool} from "@aave/core/contracts/interfaces/IPool.sol";
 import {Strings} from "@openzeppelin/utils/Strings.sol";
 
@@ -70,29 +70,33 @@ contract ETH2XTest is Test {
 
         // We haven't borrowed anything yet, so debt should be 0 and leverage ratio should be infinite
         assertEq(totalDebtAfter, 0);
-        assertEq(eth2x.getLeverageRatio(), 0);
+        assertEq(eth2x.getLeverageRatio(), type(uint256).max);
     }
 
     function test_Rebalance() public {
-        console.log("minting 1 ETH worth of ETH2X tokens");
         eth2x.mint{value: 1 ether}(address(1));
-        (uint256 totalCollateralBefore,,,,,) = eth2x.getAccountData();
-        assertLt(eth2x.getLeverageRatio(), eth2x.TARGET_RATIO());
-        console.log("totalCollateralBefore", totalCollateralBefore);
-        console.log("rebalancing...");
+        // Sometimes more than 1 rebalance is needed to get to the target leverage ratio because of Aave LTV limits
+        // Should only be the case during the initial deposit, and after big deposits
+        eth2x.rebalance();
+        eth2x.rebalance();
         eth2x.rebalance();
 
-        (uint256 totalCollateralAfter, uint256 totalDebtAfter,,,,) = eth2x.getAccountData();
+        // Expect the leverage ratio to be 2x (with a 1% buffer)
+        assertGt(eth2x.getLeverageRatio(), eth2x.TARGET_RATIO() * 99 / 100);
+        assertLt(eth2x.getLeverageRatio(), eth2x.TARGET_RATIO() * 101 / 100);
 
-        // We should have 2 ETH in collateral and 1 ETH worth of USDC in debt. Allow a 1% buffer
-        console.log("totalCollateralAfter", totalCollateralAfter);
-        assertGt(totalCollateralAfter, eth2x.ethPrice() * 195 / 100); // Greater than 1.95 ETH
-        assertLt(totalCollateralAfter, eth2x.ethPrice() * 205 / 100); // Less than 2.05 ETH
+        // Now let's deposit 100 ETH
+        eth2x.mint{value: 100 ether}(address(1));
 
-        console.log("totalDebtAfter", totalDebtAfter);
-        assertGt(totalDebtAfter, eth2x.ethPrice() * 95 / 100); // Greater than 0.95 ETH worth of USDC
-        assertLt(totalDebtAfter, eth2x.ethPrice() * 105 / 100); // Less than 1.05 ETH worth of USDC
+        // Expect the leverage ratio to be >2x
+        assertGt(eth2x.getLeverageRatio(), eth2x.TARGET_RATIO() * 99 / 100);
 
-        console.log("afterRatio", eth2x.getLeverageRatio()); // Should be very close to 2
+        eth2x.rebalance();
+        eth2x.rebalance();
+        eth2x.rebalance();
+
+        // Expect the leverage ratio to be 2x (with a 1% buffer)
+        assertGt(eth2x.getLeverageRatio(), eth2x.TARGET_RATIO() * 99 / 100);
+        assertLt(eth2x.getLeverageRatio(), eth2x.TARGET_RATIO() * 101 / 100);
     }
 }

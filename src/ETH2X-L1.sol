@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.28;
 
-import {console} from "forge-std/Test.sol";
-
 import {IPool} from "@aave/core/contracts/interfaces/IPool.sol";
 import {IWrappedTokenGatewayV3} from "@aave/periphery/contracts/misc/interfaces/IWrappedTokenGatewayV3.sol";
 import {TransferHelper} from "@uniswap/v3-periphery/libraries/TransferHelper.sol";
@@ -137,24 +135,25 @@ contract ETH2X is ERC20 {
         uint256 leverageRatio = getLeverageRatio();
 
         // Goal is for totalCollateralBase to always be (TARGET_RATIO / 1e18) * totalDebtBase
-        // E.g. for 2x leverage, totalCollateralBase should be $100 worth of ETH for every $50 worth of borrowed USDC
+        // For 2x leverage, collateral should be $100 worth of ETH for every $50 worth of borrowed USDC
 
-        // If we have too much debt, we need to borrow more USDC and swap it for ETH on Uniswap
-        // If we have too much collateral, we need to withdraw some ETH from Aave and swap it for USDC on Uniswap
+        // Examples of how rebalancing should work:
+        // If collateral = $3000 and debt = $0, we want to _borrowUsdcSwapForEthAndSupply(1500). That gets us to $4500 collateral and $1500 debt (not 2x yet)
+        // If collateral = $4500 and debt = $1500, we want to _borrowUsdcSwapForEthAndSupply(1500). That gets us to $6000 collateral and $3000 debt (2x leverage!)
+        // If collateral = $2500 and debt = $1500, we want to _withdrawEthSwapForUsdcAndRepay(500 / ethPrice()). That gets us to $2000 collateral and $1000 debt (2x leverage)
 
-        if (leverageRatio < TARGET_RATIO) {
-            // 1. Borrow more USDC (adjust for it being 6 decimals)
-            uint256 amountToBorrowFirst = ((totalCollateralBase) * 414 / 1000) / 100;
-            _borrowSwapAndSupply(amountToBorrowFirst);
+        if (leverageRatio > TARGET_RATIO) {
+            uint256 amountToBorrow = ((totalCollateralBase / ((TARGET_RATIO) / 1e18)) - totalDebtBase) / 100;
+            _borrowUsdcSwapForEthAndSupply(amountToBorrow);
 
-            // Levering up to 2x requires 2 loops, so we have to borrow more USDC and swap it for ETH again
-            (uint256 totalCollateralBaseSecond,,,,,) = getAccountData();
-            uint256 amountToBorrowSecond = ((totalCollateralBaseSecond) * 414 / 1000) / 100;
-            _borrowSwapAndSupply(amountToBorrowSecond);
+            if (getLeverageRatio() > TARGET_RATIO) {
+                (uint256 totalCollateralBase2, uint256 totalDebtBase2,,,,) = getAccountData();
+                uint256 amountToBorrow2 = ((totalCollateralBase2 / ((TARGET_RATIO) / 1e18)) - totalDebtBase2) / 100;
+                _borrowUsdcSwapForEthAndSupply(amountToBorrow2);
+            }
         } else {
-            // 1. Withdraw enough ETH from Aave to recalibrate to 2x leverage
             uint256 amountToWithdraw = totalCollateralBase - (totalDebtBase * TARGET_RATIO / 1e18);
-            _withdrawSwapAndRepay(amountToWithdraw);
+            _withdrawEthSwapForUsdcAndRepay(amountToWithdraw);
         }
 
         lastRebalance = block.timestamp;
@@ -188,10 +187,8 @@ contract ETH2X is ERC20 {
     function getLeverageRatio() public view returns (uint256) {
         (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = getAccountData();
 
-        // Add check for zero debt
         if (totalDebtBase == 0) {
-            // return type(uint256).max; // Return max value to indicate infinite leverage
-            return 0; // Return 0 to indicate no existing loan
+            return type(uint256).max; // Return max value to indicate infinite leverage
         }
 
         // Multiply by 1e18 before division to maintain precision
@@ -258,7 +255,8 @@ contract ETH2X is ERC20 {
         return price * 100;
     }
 
-    function _borrowSwapAndSupply(uint256 amountToBorrow) internal {
+    function _borrowUsdcSwapForEthAndSupply(uint256 amountToBorrow) internal {
+        // 1. Borrow USDC (adjust for it being 6 decimals)
         POOL.borrow(USDC, amountToBorrow, 2, 0, address(this));
 
         // 2. Buy ETH on Uniswap: https://docs.uniswap.org/contracts/v3/guides/swaps/single-swaps
@@ -289,7 +287,8 @@ contract ETH2X is ERC20 {
         POOL.supply(WETH, amountOut, address(this), 0);
     }
 
-    function _withdrawSwapAndRepay(uint256 amountToWithdraw) internal {
+    function _withdrawEthSwapForUsdcAndRepay(uint256 amountToWithdraw) internal {
+        // 1. Withdraw enough ETH from Aave
         POOL.withdraw(WETH, amountToWithdraw, address(this));
 
         // 2. Swap ETH for USDC on Uniswap
