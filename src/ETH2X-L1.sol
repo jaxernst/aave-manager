@@ -65,6 +65,8 @@ contract ETH2X is ERC20 {
 
         POOL = IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
         WRAPPED_TOKEN_GATEWAY = IWrappedTokenGatewayV3(0xA434D495249abE33E031Fe71a969B81f3c07950D);
+
+        bumpApprovals();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -158,6 +160,16 @@ contract ETH2X is ERC20 {
 
         lastRebalance = block.timestamp;
         emit Rebalance(leverageRatio, block.timestamp);
+    }
+
+    function bumpApprovals() public {
+        // Approve the router to spend USDC and WETH
+        TransferHelper.safeApprove(USDC, address(SWAP_ROUTER), type(uint256).max);
+        TransferHelper.safeApprove(WETH, address(SWAP_ROUTER), type(uint256).max);
+
+        // Approve the pool to spend USDC and WETH
+        TransferHelper.safeApprove(USDC, address(POOL), type(uint256).max);
+        TransferHelper.safeApprove(WETH, address(POOL), type(uint256).max);
     }
 
     /**
@@ -259,14 +271,11 @@ contract ETH2X is ERC20 {
         // 1. Borrow USDC (adjust for it being 6 decimals)
         POOL.borrow(USDC, amountToBorrow, 2, 0, address(this));
 
-        // 2. Buy ETH on Uniswap: https://docs.uniswap.org/contracts/v3/guides/swaps/single-swaps
-        // 2a. Approve the router to spend USDC (maybe we should just set infinite allowance in the constructor ?)
-        TransferHelper.safeApprove(USDC, address(SWAP_ROUTER), amountToBorrow);
-
         // TODO: Use a live price feed for this
         uint256 expectedEthAmountOut = 0;
 
-        // 2b. Set up the swap
+        // 2. Buy WETH on Uniswap: https://docs.uniswap.org/contracts/v3/guides/swaps/single-swaps
+        // 2a. Set up the swap
         ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
             tokenIn: USDC,
             tokenOut: WETH,
@@ -279,11 +288,10 @@ contract ETH2X is ERC20 {
             sqrtPriceLimitX96: 0
         });
 
-        // 2c. Execute the swap and get the amount of WETH received
+        // 2b. Execute the swap and get the amount of WETH received
         uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
 
         // 3. Deposit new WETH into Aave
-        TransferHelper.safeApprove(WETH, address(POOL), amountOut);
         POOL.supply(WETH, amountOut, address(this), 0);
     }
 
@@ -291,14 +299,11 @@ contract ETH2X is ERC20 {
         // 1. Withdraw enough ETH from Aave
         POOL.withdraw(WETH, amountToWithdraw, address(this));
 
-        // 2. Swap ETH for USDC on Uniswap
-        // 2a. Approve the router to spend WETH
-        TransferHelper.safeApprove(WETH, address(SWAP_ROUTER), amountToWithdraw);
-
         // TODO: Use a live price feed for this
         uint256 expectedUsdcAmountOut = 0;
 
-        // 2b. Set up the swap
+        // 2. Swap WETH for USDC on Uniswap
+        // 2a. Set up the swap
         ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
             tokenIn: WETH,
             tokenOut: USDC,
@@ -311,11 +316,10 @@ contract ETH2X is ERC20 {
             sqrtPriceLimitX96: 0
         });
 
-        // 2c. Execute the swap and get the amount of USDC received
+        // 2b. Execute the swap and get the amount of USDC received
         uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
 
         // 3. If we already have a loan, repay it. If we don't already have a loan, we don't need to do anything
-        TransferHelper.safeApprove(USDC, address(POOL), amountOut);
         POOL.repay(USDC, amountOut, 2, address(this));
     }
 }
