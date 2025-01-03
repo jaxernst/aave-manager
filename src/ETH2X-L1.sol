@@ -287,25 +287,9 @@ contract ETH2X is ERC20 {
         // 1. Borrow USDC (adjust for it being 6 decimals)
         POOL.borrow(USDC, amountToBorrow, 2, 0, address(this));
 
-        // TODO: Use a live price feed for this
-        uint256 expectedEthAmountOut = 0;
-
-        // 2. Buy WETH on Uniswap: https://docs.uniswap.org/contracts/v3/guides/swaps/single-swaps
-        // 2a. Set up the swap
-        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-            tokenIn: USDC,
-            tokenOut: WETH,
-            fee: POOL_FEE,
-            recipient: address(this),
-            deadline: block.timestamp,
-            amountIn: amountToBorrow,
-            // Allow 0.5% slippage
-            amountOutMinimum: expectedEthAmountOut,
-            sqrtPriceLimitX96: 0
-        });
-
-        // 2b. Execute the swap and get the amount of WETH received
-        uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
+        // 2. Swap USDC for WETH on Uniswap
+        uint256 expectedEthAmountOut = 0; // TODO: Use a live price feed for this
+        uint256 amountOut = _swap(USDC, WETH, amountToBorrow, expectedEthAmountOut);
 
         // 3. Deposit new WETH into Aave
         POOL.supply(WETH, amountOut, address(this), 0);
@@ -315,27 +299,29 @@ contract ETH2X is ERC20 {
         // 1. Withdraw enough ETH from Aave
         POOL.withdraw(WETH, amountToWithdraw, address(this));
 
-        // TODO: Use a live price feed for this
-        uint256 expectedUsdcAmountOut = 0;
-
         // 2. Swap WETH for USDC on Uniswap
-        // 2a. Set up the swap
+        uint256 expectedUsdcAmountOut = 0; // TODO: Use a live price feed for this
+        uint256 amountOut = _swap(WETH, USDC, amountToWithdraw, expectedUsdcAmountOut);
+
+        // 3. Repay the loan
+        POOL.repay(USDC, amountOut, 2, address(this));
+    }
+
+    function _swap(address tokenIn, address tokenOut, uint256 amountIn, uint256 expectedAmountOut)
+        internal
+        returns (uint256 amountOut)
+    {
         ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-            tokenIn: WETH,
-            tokenOut: USDC,
+            tokenIn: tokenIn,
+            tokenOut: tokenOut,
             fee: POOL_FEE,
             recipient: address(this),
             deadline: block.timestamp,
-            amountIn: amountToWithdraw,
-            // Allow 0.5% slippage
-            amountOutMinimum: expectedUsdcAmountOut - (expectedUsdcAmountOut / 200),
-            sqrtPriceLimitX96: 0
+            amountIn: amountIn,
+            amountOutMinimum: expectedAmountOut - (expectedAmountOut / 1000), // Allow 0.1% slippage
+            sqrtPriceLimitX96: 0 // TODO: Figure out what this is
         });
 
-        // 2b. Execute the swap and get the amount of USDC received
-        uint256 amountOut = SWAP_ROUTER.exactInputSingle(params);
-
-        // 3. If we already have a loan, repay it. If we don't already have a loan, we don't need to do anything
-        POOL.repay(USDC, amountOut, 2, address(this));
+        return SWAP_ROUTER.exactInputSingle(params);
     }
 }
