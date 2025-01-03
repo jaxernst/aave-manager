@@ -66,7 +66,13 @@ contract ETH2X is ERC20 {
         POOL = IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
         WRAPPED_TOKEN_GATEWAY = IWrappedTokenGatewayV3(0xA434D495249abE33E031Fe71a969B81f3c07950D);
 
-        bumpApprovals();
+        // Approve the router to spend USDC and WETH
+        TransferHelper.safeApprove(USDC, address(SWAP_ROUTER), type(uint256).max);
+        TransferHelper.safeApprove(WETH, address(SWAP_ROUTER), type(uint256).max);
+
+        // Approve the pool to spend USDC and WETH
+        TransferHelper.safeApprove(USDC, address(POOL), type(uint256).max);
+        TransferHelper.safeApprove(WETH, address(POOL), type(uint256).max);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -160,16 +166,6 @@ contract ETH2X is ERC20 {
 
         lastRebalance = block.timestamp;
         emit Rebalance(leverageRatio, block.timestamp);
-    }
-
-    function bumpApprovals() public {
-        // Approve the router to spend USDC and WETH
-        TransferHelper.safeApprove(USDC, address(SWAP_ROUTER), type(uint256).max);
-        TransferHelper.safeApprove(WETH, address(SWAP_ROUTER), type(uint256).max);
-
-        // Approve the pool to spend USDC and WETH
-        TransferHelper.safeApprove(USDC, address(POOL), type(uint256).max);
-        TransferHelper.safeApprove(WETH, address(POOL), type(uint256).max);
     }
 
     /**
