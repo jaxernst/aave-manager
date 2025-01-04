@@ -115,11 +115,14 @@ contract ETH2XTest is Test {
     function test_Redeem() public {
         // TODO: Test with multiple users
         address user = address(1);
+        address user2 = address(2);
+
         uint256 initialUserBalance = user.balance;
         eth2x.mint{value: 1 ether}(user);
         uint256 initialTokensPerEth = 10000e18; // The initial exchange rate
         uint256 tokenBalance = eth2x.balanceOf(user);
         assertEq(tokenBalance, initialTokensPerEth);
+        eth2x.mint{value: 1 ether}(user2);
 
         eth2x.rebalance();
         eth2x.rebalance();
@@ -136,5 +139,16 @@ contract ETH2XTest is Test {
 
         // Check that the user received the correct amount of ETH
         assertEq(user.balance, initialUserBalance + ethToRedeem);
+
+        eth2x.rebalance();
+        eth2x.rebalance();
+        eth2x.rebalance();
+
+        // There should still be ~2 ETH of collateral and ~1 ETH of debt becuase of the 2nd buyer
+        (uint256 totalCollateralAfter, uint256 totalDebtAfter,,,,) = eth2x.getAccountData();
+        assertGt(totalCollateralAfter, 2 * eth2x.ethPrice() * 99 / 100);
+        assertLt(totalCollateralAfter, 2 * eth2x.ethPrice() * 101 / 100);
+        assertGt(totalDebtAfter, eth2x.ethPrice() * 99 / 100);
+        assertLt(totalDebtAfter, eth2x.ethPrice() * 101 / 100);
     }
 }
