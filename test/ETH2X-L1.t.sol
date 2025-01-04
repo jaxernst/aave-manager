@@ -101,6 +101,7 @@ contract ETH2XTest is Test {
     }
 
     function test_Redeem() public {
+        // TODO: Test with multiple users
         address user = address(1);
         uint256 initialUserBalance = user.balance;
         eth2x.mint{value: 1 ether}(user);
@@ -112,15 +113,16 @@ contract ETH2XTest is Test {
         eth2x.rebalance();
         eth2x.rebalance();
 
-        // Calculate the amount of ETH to redeem (should be within 0.1% of 1 ETH due to Uniswap fees)
+        // Calculate the amount of ETH to redeem (should be within 1.5% of 1 ETH due to protocol fees)
         uint256 ethToRedeem = eth2x.calculateEthToRedeem(tokenBalance);
-        assertGt(ethToRedeem, 1 ether * 999 / 1000);
+        assertGt(ethToRedeem, 1 ether * 985 / 1000);
         assertLt(ethToRedeem, 1 ether);
 
-        // Redeem 1% of the user's tokens
-        // TODO: Test higher percentages
+        // Burn the tokens and redeem underlying ETH
         vm.prank(user);
-        eth2x.redeem(tokenBalance / 100);
-        assertEq(user.balance, initialUserBalance + ethToRedeem / 100);
+        eth2x.redeem(tokenBalance);
+
+        // Check that the user received the correct amount of ETH
+        assertEq(user.balance, initialUserBalance + ethToRedeem);
     }
 }

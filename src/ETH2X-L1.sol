@@ -128,22 +128,19 @@ contract ETH2X is ERC20 {
             revert NothingToRedeem();
         }
 
-        // If we withdraw too much WETH from Aave in one go, we could get liquidated.
-        // Open question: if we rebalance within the same transaction, will the loan still be liquidatable?
-        // The below assumes no
-
-        // ^ Update: I think the answer is yes. From the docs:
-        // "If user has any existing debt backed by the underlying token, then the maximum `amount` available to withdraw is the `amount` that will not leave user's health factor < 1 after withdrawal."
-        // https://aave.com/docs/developers/smart-contracts/pool#write-methods-withdraw
-
-        // Withdraw the corresponding amount of WETH from Aave
-        (uint256 totalCollateral,,,,,) = getAccountData();
-        uint256 ethWorthOfCollateral = (totalCollateral * 1e18) / ethPrice();
+        (uint256 totalCollateral, uint256 totalDebt,,,,) = getAccountData();
+        uint256 ethWorthOfPool = ((totalCollateral - totalDebt) * 1e18) / ethPrice();
 
         // Check if we have enough collateral to cover the withdrawal
-        if (ethWorthOfCollateral < ethToRedeem) {
+        if (ethWorthOfPool < ethToRedeem) {
             revert InsufficientCollateral();
         }
+
+        // The most amount of times we'll need to repay the loan is 3 times due to Aave's LTV limits
+        // For simplicity (not efficiency), we'll just repay the loan in 3 equal parts every time
+        _withdrawEthSwapForUsdcAndRepay(ethToRedeem / 3);
+        _withdrawEthSwapForUsdcAndRepay(ethToRedeem / 3);
+        _withdrawEthSwapForUsdcAndRepay(ethToRedeem / 3);
 
         // Withdraw the corresponding amount of WETH from Aave
         POOL.withdraw(WETH, ethToRedeem, address(this));
@@ -151,9 +148,6 @@ contract ETH2X is ERC20 {
         // Unwrap the WETH and transfer it to the caller
         IWETH(WETH).withdraw(ethToRedeem);
         TransferHelper.safeTransferETH(msg.sender, ethToRedeem);
-
-        // Rebalance the pool
-        rebalance();
 
         emit Redeem(msg.sender, ethToRedeem);
     }
@@ -265,15 +259,16 @@ contract ETH2X is ERC20 {
         uint256 percentageOwned = (redeemAmount * 1e18) / totalSupply();
 
         // If we had to put all assets into ETH, how much would it be worth?
-        uint256 totalCollateralValue = collateral - debt;
+        uint256 value = collateral - debt;
 
         // How much of that value does the redeemer own?
-        uint256 redeemerValue = totalCollateralValue * percentageOwned;
+        uint256 redeemerValue = value * percentageOwned;
 
         // How much ETH is that worth?
         uint256 amount = redeemerValue / ethPrice();
 
-        return amount;
+        // Take a 1% haircut to account for fees/slippage, and always safer to round down
+        return amount - (amount / 100);
     }
 
     /// @return Price of ETH in USDC with 12 digits of precision
@@ -318,7 +313,7 @@ contract ETH2X is ERC20 {
             recipient: address(this),
             deadline: block.timestamp,
             amountIn: amountIn,
-            amountOutMinimum: expectedAmountOut - (expectedAmountOut / 1000), // Allow 0.1% slippage
+            amountOutMinimum: expectedAmountOut - (expectedAmountOut / 200), // Allow 0.1% slippage
             sqrtPriceLimitX96: 0 // TODO: Figure out what this is
         });
 
