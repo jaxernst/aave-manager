@@ -2,7 +2,7 @@
 pragma solidity ^0.8.13;
 
 import {Script} from "forge-std/Script.sol";
-import {ETH2X} from "../src/ETH2X-L1.sol";
+import {ETH2X} from "../src/ETH2X.sol";
 
 contract ETH2XScript is Script {
     ETH2X public eth2x;

@@ -5,7 +5,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {IPool} from "@aave/core/contracts/interfaces/IPool.sol";
 import {Strings} from "@openzeppelin/utils/Strings.sol";
 
-import {ETH2X} from "../src/ETH2X-L1.sol";
+import {ETH2X} from "../src/ETH2X.sol";
 
 contract ETH2XTest is Test {
     ETH2X public eth2x;
