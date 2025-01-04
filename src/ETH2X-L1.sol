@@ -94,19 +94,13 @@ contract ETH2X is ERC20 {
      * @param onBehalfOf The address to mint tokens to
      */
     function mint(address onBehalfOf) public payable {
+        // Figure out how many tokens the caller should get based on the amount of ETH they deposit
+        uint256 amount = calculateTokensToMint(msg.value);
+
         // Supply ETH to Aave and recieve equal amount of aWETH
         WRAPPED_TOKEN_GATEWAY.depositETH{value: msg.value}(address(0), address(this), 0);
 
-        /**
-         * TODO: Determine amount of tokens to mint
-         * Options: Give the caller tokens based on...
-         * 1. the price of ETH at the time of deposit
-         * 2. the amount of ETH deposited compared to the total amount of aWETH in the contract
-         * 3. ?? I'm not sure if any of the approaches above are correct
-         */
-
         // Mint tokens to the caller to represent ownership of the pool
-        uint256 amount = calculateTokensToMint(msg.value);
         _mint(onBehalfOf, amount);
         emit Mint(onBehalfOf, amount);
     }
@@ -230,18 +224,16 @@ contract ETH2X is ERC20 {
         // Calculate amount of tokens to mint based on the proportional ownership
         uint256 amount;
         if (tokenSupply == 0) {
-            // First deposit - set initial exchange rate of 1000 tokens = 1 ETH
+            // First deposit - set initial exchange rate of 10k tokens = 1 ETH
             amount = depositAmount * 10000;
         } else {
             // Calculate the net value (collateral - debt) before and after deposit
             uint256 netValueBefore = totalCollateralBefore - totalDebtBefore;
-            uint256 depositAmountValue = depositAmount * ethPrice();
-            uint256 totalCollateralAfter = totalCollateralBefore + depositAmountValue;
-            uint256 netValueAfter = totalCollateralAfter - totalDebtBefore;
-            uint256 valueAdded = netValueAfter - netValueBefore;
+            uint256 depositAmountValue = (depositAmount) * ethPrice();
+            uint256 percentageContribution = (depositAmountValue) / netValueBefore;
 
             // Mint tokens proportional to the value added compared to existing value
-            amount = (valueAdded * tokenSupply) / netValueBefore;
+            amount = (percentageContribution * tokenSupply) / 1e18;
         }
 
         return amount;

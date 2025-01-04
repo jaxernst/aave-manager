@@ -53,14 +53,17 @@ contract ETH2XTest is Test {
     }
 
     function test_Deposit() public {
+        address user1 = address(1);
+        address user2 = address(2);
+
         (uint256 totalCollateralBefore, uint256 totalDebtBefore,,,,) = eth2x.getAccountData();
         assertEq(totalCollateralBefore, 0);
         assertEq(totalDebtBefore, 0);
 
-        eth2x.mint{value: 1 ether}(address(1));
-        uint256 tokensPerEth = 10000; // The initial exchange rate
-        assertEq(eth2x.balanceOf(address(1)), tokensPerEth * 1e18);
-        assertEq(eth2x.totalSupply(), tokensPerEth * 1e18);
+        eth2x.mint{value: 1 ether}(user1);
+        uint256 initialTokensPerEth = 10000e18; // The initial exchange rate
+        assertEq(eth2x.balanceOf(user1), initialTokensPerEth);
+        assertEq(eth2x.totalSupply(), initialTokensPerEth);
 
         (uint256 totalCollateralAfter, uint256 totalDebtAfter,,,,) = eth2x.getAccountData();
 
@@ -71,6 +74,15 @@ contract ETH2XTest is Test {
         // We haven't borrowed anything yet, so debt should be 0 and leverage ratio should be infinite
         assertEq(totalDebtAfter, 0);
         assertEq(eth2x.getLeverageRatio(), type(uint256).max);
+
+        // Deposit 1 ETH for the second user, should get roughly the same amount of tokens since it matches the pool value
+        uint256 tokensToMint2 = eth2x.calculateTokensToMint(1 ether);
+        assertGt(tokensToMint2, initialTokensPerEth * 99 / 100);
+        assertLt(tokensToMint2, initialTokensPerEth * 101 / 100);
+
+        // Actually deposit the ETH and check that the correct amount of tokens were minted
+        eth2x.mint{value: 1 ether}(user2);
+        assertEq(eth2x.balanceOf(user2), tokensToMint2);
     }
 
     function test_Rebalance() public {
@@ -105,9 +117,9 @@ contract ETH2XTest is Test {
         address user = address(1);
         uint256 initialUserBalance = user.balance;
         eth2x.mint{value: 1 ether}(user);
-        uint256 tokensPerEth = 10000; // The initial exchange rate
+        uint256 initialTokensPerEth = 10000e18; // The initial exchange rate
         uint256 tokenBalance = eth2x.balanceOf(user);
-        assertEq(tokenBalance, tokensPerEth * 1e18);
+        assertEq(tokenBalance, initialTokensPerEth);
 
         eth2x.rebalance();
         eth2x.rebalance();
