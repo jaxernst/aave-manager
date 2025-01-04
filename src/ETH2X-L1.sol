@@ -25,7 +25,6 @@ contract ETH2X is ERC20 {
     //////////////////////////////////////////////////////////////*/
 
     // Local variables
-    uint256 public lastRebalance;
     uint256 public constant TARGET_RATIO = 2e18; // 2x leverage
 
     // Uniswap
@@ -173,7 +172,6 @@ contract ETH2X is ERC20 {
             _withdrawEthSwapForUsdcAndRepay(amountToWithdraw);
         }
 
-        lastRebalance = block.timestamp;
         emit Rebalance(leverageRatio, block.timestamp);
     }
 
