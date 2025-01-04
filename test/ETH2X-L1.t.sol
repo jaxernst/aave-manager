@@ -141,8 +141,6 @@ contract ETH2XTest is Test {
         assertEq(user.balance, initialUserBalance + ethToRedeem);
 
         eth2x.rebalance();
-        eth2x.rebalance();
-        eth2x.rebalance();
 
         // There should still be ~2 ETH of collateral and ~1 ETH of debt becuase of the 2nd buyer
         (uint256 totalCollateralAfter, uint256 totalDebtAfter,,,,) = eth2x.getAccountData();
