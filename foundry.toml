@@ -4,6 +4,7 @@ src = "src"
 out = "out"
 evm_version = "cancun"
 libs = ["lib"]
+gas_reports = ["ETH2X"]
 
 remappings = [
   "forge-std/=lib/forge-std/src/",
