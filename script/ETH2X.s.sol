@@ -24,9 +24,10 @@ contract ETH2XScript is Script {
 
         // https://aave.com/docs/resources/addresses
         address _pool = 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5;
-        address _wrappedTokenGateway = 0x729b3EA8C005AbC58c9150fb57Ec161296F06766;
 
-        eth2x = new ETH2X(_usdc, _weth, _swapRouter, _checkTheChain, _pool, _wrappedTokenGateway);
+        address _owner = 0x179A862703a4adfb29896552DF9e307980D19285;
+
+        eth2x = new ETH2X(_usdc, _weth, _swapRouter, _checkTheChain, _pool, _owner);
 
         vm.stopBroadcast();
     }

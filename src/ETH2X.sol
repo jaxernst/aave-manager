@@ -6,7 +6,7 @@ import {ERC20Burnable} from "@openzeppelin/token/ERC20/extensions/ERC20Burnable.
 import {ERC20Permit} from "@openzeppelin/token/ERC20/extensions/ERC20Permit.sol";
 import {IPool} from "@aave/core/contracts/interfaces/IPool.sol";
 import {IWETH} from "@aave/core/contracts/misc/interfaces/IWETH.sol";
-import {IWrappedTokenGatewayV3} from "@aave/periphery/contracts/misc/interfaces/IWrappedTokenGatewayV3.sol";
+import {Ownable} from "@openzeppelin/access/Ownable.sol";
 import {TransferHelper} from "@uniswap/v3-periphery/libraries/TransferHelper.sol";
 
 import {ICheckTheChain} from "./interfaces/ICheckTheChain.sol";
@@ -17,13 +17,14 @@ import {IV3SwapRouter} from "./interfaces/IV3SwapRouter.sol";
  * @notice A permissionless system that allows users to easily maintain a 2x leveraged ETH position.
  * @dev The underlying assets (WETH and USDC) are transparently managed in Aave via the `rebalance()` method.
  */
-contract ETH2X is ERC20, ERC20Burnable, ERC20Permit {
+contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
     /*//////////////////////////////////////////////////////////////
                                PARAMETERS
     //////////////////////////////////////////////////////////////*/
 
     // Local
     uint256 public constant TARGET_RATIO = 2e18; // 2x leverage
+    mapping(address => bool) public allowed; // Allowlist for minting (temporary while testing)
 
     // Uniswap
     address public immutable USDC;
@@ -34,7 +35,6 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit {
 
     // Aave
     IPool public immutable POOL;
-    IWrappedTokenGatewayV3 public immutable WRAPPED_TOKEN_GATEWAY;
 
     /*//////////////////////////////////////////////////////////////
                                  EVENTS
@@ -50,6 +50,24 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit {
 
     error InsufficientCollateral();
     error NothingToRedeem();
+    error Unauthorized();
+
+    /*//////////////////////////////////////////////////////////////
+                               MODIFIERS
+    //////////////////////////////////////////////////////////////*/
+
+    modifier onlyAllowed() {
+        if (owner() == address(0)) {
+            // If ownership has been renounced, allow everyone to mint
+            _;
+        } else {
+            // If there is an owner, only allow allowed addresses to mint
+            if (!allowed[msg.sender]) {
+                revert Unauthorized();
+            }
+            _;
+        }
+    }
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
@@ -61,14 +79,13 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit {
         address _swapRouter,
         address _checkTheChain,
         address _pool,
-        address _wrappedTokenGateway
-    ) ERC20("ETH2X", "ETH2X") ERC20Permit("ETH2X") {
+        address _owner
+    ) ERC20("ETH2X", "ETH2X") ERC20Permit("ETH2X") Ownable(_owner) {
         USDC = _usdc;
         WETH = _weth;
         SWAP_ROUTER = IV3SwapRouter(_swapRouter);
         CHECK_THE_CHAIN = ICheckTheChain(_checkTheChain);
         POOL = IPool(_pool);
-        WRAPPED_TOKEN_GATEWAY = IWrappedTokenGatewayV3(_wrappedTokenGateway);
 
         // Approve the router to spend USDC and WETH
         TransferHelper.safeApprove(USDC, address(SWAP_ROUTER), type(uint256).max);
@@ -77,6 +94,9 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit {
         // Approve the pool to spend USDC and WETH
         TransferHelper.safeApprove(USDC, address(POOL), type(uint256).max);
         TransferHelper.safeApprove(WETH, address(POOL), type(uint256).max);
+
+        // Allow the owner to mint
+        allowed[_owner] = true;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -95,12 +115,13 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit {
      * @dev We don't need to rebalance internally because worst case, we have more collateral than debt.
      * @param onBehalfOf The address to mint tokens to
      */
-    function mint(address onBehalfOf) public payable {
+    function mint(address onBehalfOf) public payable onlyAllowed {
         // Figure out how many tokens the caller should get based on the amount of ETH they deposit
         uint256 amount = calculateTokensToMint(msg.value);
 
         // Supply ETH to Aave and recieve equal amount of aWETH
-        WRAPPED_TOKEN_GATEWAY.depositETH{value: msg.value}(address(0), address(this), 0);
+        IWETH(WETH).deposit{value: msg.value}();
+        POOL.supply(WETH, msg.value, address(this), 0);
 
         // Mint tokens to the caller to represent ownership of the pool
         _mint(onBehalfOf, amount);
@@ -176,6 +197,10 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit {
         }
 
         emit Rebalance(leverageRatio, block.timestamp);
+    }
+
+    function setAllowed(address user, bool allowed_) external onlyOwner {
+        allowed[user] = allowed_;
     }
 
     /**

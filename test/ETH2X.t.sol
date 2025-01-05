@@ -17,10 +17,13 @@ contract ETH2XTest is Test {
         address _swapRouter = 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45;
         address _checkTheChain = 0x0000000000cDC1F8d393415455E382c30FBc0a84;
         address _pool = 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2;
-        address _wrappedTokenGateway = 0xA434D495249abE33E031Fe71a969B81f3c07950D;
+        address _owner = 0x179A862703a4adfb29896552DF9e307980D19285;
 
         vm.createSelectFork("mainnet", 21512799);
-        eth2x = new ETH2X(_usdc, _weth, _swapRouter, _checkTheChain, _pool, _wrappedTokenGateway);
+        eth2x = new ETH2X(_usdc, _weth, _swapRouter, _checkTheChain, _pool, _owner);
+
+        vm.prank(_owner);
+        eth2x.renounceOwnership();
     }
 
     function test_ETH2X() public view {
