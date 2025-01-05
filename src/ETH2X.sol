@@ -184,13 +184,6 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
         if (leverageRatio > TARGET_RATIO) {
             uint256 amountToBorrow = ((totalCollateralBase / ((TARGET_RATIO) / 1e18)) - totalDebtBase) / 100;
             _borrowUsdcSwapForEthAndSupply(amountToBorrow);
-
-            // Nested rebalance if we can't get far enough in one go due to Aave LTV limits
-            if (getLeverageRatio() > TARGET_RATIO) {
-                (uint256 totalCollateralBase2, uint256 totalDebtBase2,,,,) = getAccountData();
-                uint256 amountToBorrow2 = ((totalCollateralBase2 / ((TARGET_RATIO) / 1e18)) - totalDebtBase2) / 100;
-                _borrowUsdcSwapForEthAndSupply(amountToBorrow2);
-            }
         } else {
             uint256 amountToWithdraw = totalCollateralBase - (totalDebtBase * TARGET_RATIO / 1e18);
             _withdrawEthSwapForUsdcAndRepay(amountToWithdraw);
