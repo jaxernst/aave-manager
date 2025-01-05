@@ -5,6 +5,12 @@
 
 A smart contract that manages a leveraged ETH position in Aave, inspired by [Index Coop](https://indexcoop.com/). It represents ownership as an ERC20 token, and allows anybody to rebalance the Aave position at any time.
 
+This repo also includes a [keeper](./keeper/README.md) script that monitors the health of the position and rebalances it if necessary.
+
+## Deployments
+
+- Base: [`0x271f0fa3852c9bb8940426a74cb987a354ed2553`](https://basescan.org/address/0x271f0fa3852c9bb8940426a74cb987a354ed2553).
+
 ## Foundry Documentation
 
 https://book.getfoundry.sh/
