@@ -15,7 +15,7 @@ const client = createWalletClient({
 }).extend(publicActions)
 
 const contract = {
-  address: '0x' as const,
+  address: '0x271f0FA3852c9bB8940426A74cb987a354ED2553' as const,
   abi: parseAbi([
     'function rebalance() public',
     'function getLeverageRatio() public view returns (uint256)',
