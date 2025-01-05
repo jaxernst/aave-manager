@@ -1,36 +1,34 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.28;
 
+import {ERC20} from "@openzeppelin/token/ERC20/ERC20.sol";
+import {ERC20Burnable} from "@openzeppelin/token/ERC20/extensions/ERC20Burnable.sol";
+import {ERC20Permit} from "@openzeppelin/token/ERC20/extensions/ERC20Permit.sol";
 import {IPool} from "@aave/core/contracts/interfaces/IPool.sol";
+import {IWETH} from "@aave/core/contracts/misc/interfaces/IWETH.sol";
 import {IWrappedTokenGatewayV3} from "@aave/periphery/contracts/misc/interfaces/IWrappedTokenGatewayV3.sol";
 import {TransferHelper} from "@uniswap/v3-periphery/libraries/TransferHelper.sol";
-import {IWETH} from "@aave/core/contracts/misc/interfaces/IWETH.sol";
-import {ERC20} from "@openzeppelin/token/ERC20/ERC20.sol";
 
-import {ISwapRouter} from "./interfaces/ISwapRouter.sol";
 import {ICheckTheChain} from "./interfaces/ICheckTheChain.sol";
+import {ISwapRouter} from "./interfaces/ISwapRouter.sol";
 
 /**
  * @title ETH2X
- *
- * When deposit() is called, this contract should deposit {msg.value} into Aave and borrow USDC at {tbd} rate.
- * With the USDC, the contract should swap it for ETH on Uniswap.
- * The goal is to maintain a 2x leveraged position in ETH, which anybody can help maintain via rebalance().
- *
- * Goal should be to have $2 worth of ETH for every 1 USDC in the contract.
+ * @notice A permissionless system that allows users to easily maintain a 2x leveraged ETH position.
+ * @dev The underlying assets (WETH and USDC) are transparently managed in Aave via the `rebalance()` method.
  */
-contract ETH2X is ERC20 {
+contract ETH2X is ERC20, ERC20Burnable, ERC20Permit {
     /*//////////////////////////////////////////////////////////////
                                PARAMETERS
     //////////////////////////////////////////////////////////////*/
 
-    // Local variables
+    // Local
     uint256 public constant TARGET_RATIO = 2e18; // 2x leverage
 
     // Uniswap
     address public immutable USDC;
     address public immutable WETH;
-    uint24 public immutable POOL_FEE;
+    uint24 internal constant POOL_FEE = 500; // 0.05%
     ISwapRouter public immutable SWAP_ROUTER;
     ICheckTheChain public immutable CHECK_THE_CHAIN;
 
@@ -57,15 +55,20 @@ contract ETH2X is ERC20 {
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor() ERC20("ETH2X", "ETH2X") {
-        USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-        WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-        POOL_FEE = 500; // 0.05%
-        SWAP_ROUTER = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
-        CHECK_THE_CHAIN = ICheckTheChain(0x0000000000cDC1F8d393415455E382c30FBc0a84);
-
-        POOL = IPool(0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2);
-        WRAPPED_TOKEN_GATEWAY = IWrappedTokenGatewayV3(0xA434D495249abE33E031Fe71a969B81f3c07950D);
+    constructor(
+        address _usdc,
+        address _weth,
+        address _swapRouter,
+        address _checkTheChain,
+        address _pool,
+        address _wrappedTokenGateway
+    ) ERC20("ETH2X", "ETH2X") ERC20Permit("ETH2X") {
+        USDC = _usdc;
+        WETH = _weth;
+        SWAP_ROUTER = ISwapRouter(_swapRouter);
+        CHECK_THE_CHAIN = ICheckTheChain(_checkTheChain);
+        POOL = IPool(_pool);
+        WRAPPED_TOKEN_GATEWAY = IWrappedTokenGatewayV3(_wrappedTokenGateway);
 
         // Approve the router to spend USDC and WETH
         TransferHelper.safeApprove(USDC, address(SWAP_ROUTER), type(uint256).max);

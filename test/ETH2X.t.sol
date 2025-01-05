@@ -11,8 +11,16 @@ contract ETH2XTest is Test {
     ETH2X public eth2x;
 
     function setUp() public {
+        // All addresses are for Ethereum
+        address _usdc = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+        address _weth = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
+        address _swapRouter = 0xE592427A0AEce92De3Edee1F18E0157C05861564;
+        address _checkTheChain = 0x0000000000cDC1F8d393415455E382c30FBc0a84;
+        address _pool = 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2;
+        address _wrappedTokenGateway = 0xA434D495249abE33E031Fe71a969B81f3c07950D;
+
         vm.createSelectFork("mainnet", 21512799);
-        eth2x = new ETH2X();
+        eth2x = new ETH2X(_usdc, _weth, _swapRouter, _checkTheChain, _pool, _wrappedTokenGateway);
     }
 
     function test_ETH2X() public view {
