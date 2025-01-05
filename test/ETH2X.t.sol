@@ -14,7 +14,7 @@ contract ETH2XTest is Test {
         // All addresses are for Ethereum
         address _usdc = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
         address _weth = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-        address _swapRouter = 0xE592427A0AEce92De3Edee1F18E0157C05861564;
+        address _swapRouter = 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45;
         address _checkTheChain = 0x0000000000cDC1F8d393415455E382c30FBc0a84;
         address _pool = 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2;
         address _wrappedTokenGateway = 0xA434D495249abE33E031Fe71a969B81f3c07950D;

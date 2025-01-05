@@ -10,7 +10,7 @@ import {IWrappedTokenGatewayV3} from "@aave/periphery/contracts/misc/interfaces/
 import {TransferHelper} from "@uniswap/v3-periphery/libraries/TransferHelper.sol";
 
 import {ICheckTheChain} from "./interfaces/ICheckTheChain.sol";
-import {ISwapRouter} from "./interfaces/ISwapRouter.sol";
+import {IV3SwapRouter} from "./interfaces/IV3SwapRouter.sol";
 
 /**
  * @title ETH2X
@@ -29,7 +29,7 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit {
     address public immutable USDC;
     address public immutable WETH;
     uint24 internal constant POOL_FEE = 500; // 0.05%
-    ISwapRouter public immutable SWAP_ROUTER;
+    IV3SwapRouter public immutable SWAP_ROUTER;
     ICheckTheChain public immutable CHECK_THE_CHAIN;
 
     // Aave
@@ -65,7 +65,7 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit {
     ) ERC20("ETH2X", "ETH2X") ERC20Permit("ETH2X") {
         USDC = _usdc;
         WETH = _weth;
-        SWAP_ROUTER = ISwapRouter(_swapRouter);
+        SWAP_ROUTER = IV3SwapRouter(_swapRouter);
         CHECK_THE_CHAIN = ICheckTheChain(_checkTheChain);
         POOL = IPool(_pool);
         WRAPPED_TOKEN_GATEWAY = IWrappedTokenGatewayV3(_wrappedTokenGateway);
@@ -299,12 +299,11 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit {
         internal
         returns (uint256 amountOut)
     {
-        ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
+        IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter.ExactInputSingleParams({
             tokenIn: tokenIn,
             tokenOut: tokenOut,
             fee: POOL_FEE,
             recipient: address(this),
-            deadline: block.timestamp,
             amountIn: amountIn,
             amountOutMinimum: expectedAmountOut - (expectedAmountOut / 200), // Allow 0.1% slippage
             sqrtPriceLimitX96: 0 // TODO: Figure out what this is
