@@ -15,12 +15,12 @@ contract ETH2XTest is Test {
         address _usdc = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
         address _weth = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
         address _swapRouter = 0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45;
-        address _checkTheChain = 0x0000000000cDC1F8d393415455E382c30FBc0a84;
+        address _priceOracle = 0x54586bE62E3c3580375aE3723C145253060Ca0C2;
         address _pool = 0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2;
         address _owner = 0x179A862703a4adfb29896552DF9e307980D19285;
 
         vm.createSelectFork("mainnet", 21512799);
-        eth2x = new ETH2X(_usdc, _weth, _swapRouter, _checkTheChain, _pool, _owner);
+        eth2x = new ETH2X(_usdc, _weth, _swapRouter, _priceOracle, _pool, _owner);
 
         vm.prank(_owner);
         eth2x.renounceOwnership();
@@ -46,7 +46,7 @@ contract ETH2XTest is Test {
 
     function test_GetPriceOnchain() public view {
         uint256 price = eth2x.ethPrice();
-        assertEq(price, 339988224400);
+        assertEq(price, 339969399451);
     }
 
     function test_CheckDigits() public view {
@@ -125,7 +125,6 @@ contract ETH2XTest is Test {
     }
 
     function test_Redeem() public {
-        // TODO: Test with multiple users
         address user = address(1);
         address user2 = address(2);
 
@@ -140,9 +139,9 @@ contract ETH2XTest is Test {
         eth2x.rebalance();
         eth2x.rebalance();
 
-        // Calculate the amount of ETH to redeem (should be within 1.5% of 1 ETH due to protocol fees)
+        // Calculate the amount of ETH to redeem (should be within 0.5% of 1 ETH due to protocol fees)
         uint256 ethToRedeem = eth2x.calculateEthToRedeem(tokenBalance);
-        assertGt(ethToRedeem, 1 ether * 985 / 1000);
+        assertGt(ethToRedeem, 1 ether * 995 / 1000);
         assertLt(ethToRedeem, 1 ether);
 
         // Burn the tokens and redeem underlying ETH

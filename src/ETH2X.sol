@@ -5,11 +5,11 @@ import {ERC20} from "@openzeppelin/token/ERC20/ERC20.sol";
 import {ERC20Burnable} from "@openzeppelin/token/ERC20/extensions/ERC20Burnable.sol";
 import {ERC20Permit} from "@openzeppelin/token/ERC20/extensions/ERC20Permit.sol";
 import {IPool} from "@aave/core/contracts/interfaces/IPool.sol";
+import {IPriceOracleGetter} from "@aave/core/contracts/interfaces/IPriceOracleGetter.sol";
 import {IWETH} from "@aave/core/contracts/misc/interfaces/IWETH.sol";
 import {Ownable} from "@openzeppelin/access/Ownable.sol";
 import {TransferHelper} from "@uniswap/v3-periphery/libraries/TransferHelper.sol";
 
-import {ICheckTheChain} from "./interfaces/ICheckTheChain.sol";
 import {IV3SwapRouter} from "./interfaces/IV3SwapRouter.sol";
 
 /**
@@ -31,7 +31,7 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
     address public immutable WETH;
     uint24 internal constant POOL_FEE = 500; // 0.05%
     IV3SwapRouter public immutable SWAP_ROUTER;
-    ICheckTheChain public immutable CHECK_THE_CHAIN;
+    IPriceOracleGetter public immutable PRICE_ORACLE;
 
     // Aave
     IPool public immutable POOL;
@@ -73,18 +73,15 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor(
-        address _usdc,
-        address _weth,
-        address _swapRouter,
-        address _checkTheChain,
-        address _pool,
-        address _owner
-    ) ERC20("ETH2X", "ETH2X") ERC20Permit("ETH2X") Ownable(_owner) {
+    constructor(address _usdc, address _weth, address _swapRouter, address _priceOracle, address _pool, address _owner)
+        ERC20("ETH2X", "ETH2X")
+        ERC20Permit("ETH2X")
+        Ownable(_owner)
+    {
         USDC = _usdc;
         WETH = _weth;
         SWAP_ROUTER = IV3SwapRouter(_swapRouter);
-        CHECK_THE_CHAIN = ICheckTheChain(_checkTheChain);
+        PRICE_ORACLE = IPriceOracleGetter(_priceOracle);
         POOL = IPool(_pool);
 
         // Approve the router to spend USDC and WETH
@@ -148,7 +145,7 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
         (uint256 totalCollateral, uint256 totalDebt,,,,) = getAccountData();
         uint256 ethWorthOfPool = ((totalCollateral - totalDebt) * 1e18) / ethPrice();
 
-        // Check if we have enough collateral to cover the withdrawal
+        // Check if we have enough collateral to cover the withdrawal (we should always have enough)
         if (ethWorthOfPool < ethToRedeem) {
             revert InsufficientCollateral();
         }
@@ -277,16 +274,11 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
 
         // How much ETH is that worth?
         uint256 amount = redeemerValue / ethPrice();
-
-        // Take a 1% haircut to account for fees/slippage, and always safer to round down
-        return amount - (amount / 100);
+        return amount;
     }
 
-    /// @return Price of ETH in USDC with 12 digits of precision
     function ethPrice() public view returns (uint256) {
-        (uint256 price,) = CHECK_THE_CHAIN.checkPrice(WETH);
-        // Convert to 12 digits of precision to match Aave's price feed
-        return price * 100;
+        return PRICE_ORACLE.getAssetPrice(WETH);
     }
 
     function _borrowUsdcSwapForEthAndSupply(uint256 amountToBorrow) internal {
