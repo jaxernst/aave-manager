@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity 0.8.28;
+pragma solidity 0.8.20;
 
 import {ERC20} from "@openzeppelin/token/ERC20/ERC20.sol";
 import {ERC20Burnable} from "@openzeppelin/token/ERC20/extensions/ERC20Burnable.sol";
@@ -73,11 +73,14 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
                               CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
-    constructor(address _usdc, address _weth, address _swapRouter, address _priceOracle, address _pool, address _owner)
-        ERC20("ETH2X", "ETH2X")
-        ERC20Permit("ETH2X")
-        Ownable(_owner)
-    {
+    constructor(
+        address _usdc,
+        address _weth,
+        address _swapRouter,
+        address _priceOracle,
+        address _pool,
+        address _owner
+    ) ERC20("ETH2X", "ETH2X") ERC20Permit("ETH2X") Ownable(_owner) {
         USDC = _usdc;
         WETH = _weth;
         SWAP_ROUTER = IV3SwapRouter(_swapRouter);
@@ -85,8 +88,16 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
         POOL = IPool(_pool);
 
         // Approve the router to spend USDC and WETH
-        TransferHelper.safeApprove(USDC, address(SWAP_ROUTER), type(uint256).max);
-        TransferHelper.safeApprove(WETH, address(SWAP_ROUTER), type(uint256).max);
+        TransferHelper.safeApprove(
+            USDC,
+            address(SWAP_ROUTER),
+            type(uint256).max
+        );
+        TransferHelper.safeApprove(
+            WETH,
+            address(SWAP_ROUTER),
+            type(uint256).max
+        );
 
         // Approve the pool to spend USDC and WETH
         TransferHelper.safeApprove(USDC, address(POOL), type(uint256).max);
@@ -142,8 +153,9 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
             revert NothingToRedeem();
         }
 
-        (uint256 totalCollateral, uint256 totalDebt,,,,) = getAccountData();
-        uint256 ethWorthOfPool = ((totalCollateral - totalDebt) * 1e18) / ethPrice();
+        (uint256 totalCollateral, uint256 totalDebt, , , , ) = getAccountData();
+        uint256 ethWorthOfPool = ((totalCollateral - totalDebt) * 1e18) /
+            ethPrice();
 
         // Check if we have enough collateral to cover the withdrawal (we should always have enough)
         if (ethWorthOfPool < ethToRedeem) {
@@ -167,7 +179,14 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
     }
 
     function rebalance() public {
-        (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = getAccountData();
+        (
+            uint256 totalCollateralBase,
+            uint256 totalDebtBase,
+            ,
+            ,
+            ,
+
+        ) = getAccountData();
         uint256 leverageRatio = getLeverageRatio();
 
         // Goal is for totalCollateralBase to always be (TARGET_RATIO / 1e18) * totalDebtBase
@@ -179,10 +198,12 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
         // If collateral = $2500 and debt = $1500, we want to _withdrawEthSwapForUsdcAndRepay(500 / ethPrice()). That gets us to $2000 collateral and $1000 debt (2x leverage)
 
         if (leverageRatio > TARGET_RATIO) {
-            uint256 amountToBorrow = ((totalCollateralBase / ((TARGET_RATIO) / 1e18)) - totalDebtBase) / 100;
+            uint256 amountToBorrow = ((totalCollateralBase /
+                ((TARGET_RATIO) / 1e18)) - totalDebtBase) / 100;
             _borrowUsdcSwapForEthAndSupply(amountToBorrow);
         } else {
-            uint256 amountToWithdraw = totalCollateralBase - (totalDebtBase * TARGET_RATIO / 1e18);
+            uint256 amountToWithdraw = totalCollateralBase -
+                ((totalDebtBase * TARGET_RATIO) / 1e18);
             _withdrawEthSwapForUsdcAndRepay(amountToWithdraw);
         }
 
@@ -218,7 +239,14 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
     }
 
     function getLeverageRatio() public view returns (uint256) {
-        (uint256 totalCollateralBase, uint256 totalDebtBase,,,,) = getAccountData();
+        (
+            uint256 totalCollateralBase,
+            uint256 totalDebtBase,
+            ,
+            ,
+            ,
+
+        ) = getAccountData();
 
         if (totalDebtBase == 0) {
             return type(uint256).max; // Return max value to indicate infinite leverage
@@ -233,8 +261,17 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
      * @param depositAmount The amount of ETH to deposit
      * @return The amount of tokens to mint
      */
-    function calculateTokensToMint(uint256 depositAmount) public view returns (uint256) {
-        (uint256 totalCollateralBefore, uint256 totalDebtBefore,,,,) = getAccountData();
+    function calculateTokensToMint(
+        uint256 depositAmount
+    ) public view returns (uint256) {
+        (
+            uint256 totalCollateralBefore,
+            uint256 totalDebtBefore,
+            ,
+            ,
+            ,
+
+        ) = getAccountData();
         uint256 tokenSupply = totalSupply();
 
         // Calculate amount of tokens to mint based on the proportional ownership
@@ -246,7 +283,8 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
             // Calculate the net value (collateral - debt) before and after deposit
             uint256 netValueBefore = totalCollateralBefore - totalDebtBefore;
             uint256 depositAmountValue = (depositAmount) * ethPrice();
-            uint256 percentageContribution = (depositAmountValue) / netValueBefore;
+            uint256 percentageContribution = (depositAmountValue) /
+                netValueBefore;
 
             // Mint tokens proportional to the value added compared to existing value
             amount = (percentageContribution * tokenSupply) / 1e18;
@@ -260,8 +298,10 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
      * @param redeemAmount The amount of ETH2X tokens to burn in exchange for the underlying ETH
      * @return The amount of ETH to redeem
      */
-    function calculateEthToRedeem(uint256 redeemAmount) public view returns (uint256) {
-        (uint256 collateral, uint256 debt,,,,) = getAccountData();
+    function calculateEthToRedeem(
+        uint256 redeemAmount
+    ) public view returns (uint256) {
+        (uint256 collateral, uint256 debt, , , , ) = getAccountData();
 
         // Calculate the percentage of the pool that the tokens represent
         uint256 percentageOwned = (redeemAmount * 1e18) / totalSupply();
@@ -287,37 +327,52 @@ contract ETH2X is ERC20, ERC20Burnable, ERC20Permit, Ownable {
 
         // 2. Swap USDC for WETH on Uniswap
         uint256 expectedEthAmountOut = 0; // TODO: Use a live price feed for this
-        uint256 amountOut = _swap(USDC, WETH, amountToBorrow, expectedEthAmountOut);
+        uint256 amountOut = _swap(
+            USDC,
+            WETH,
+            amountToBorrow,
+            expectedEthAmountOut
+        );
 
         // 3. Deposit new WETH into Aave
         POOL.supply(WETH, amountOut, address(this), 0);
     }
 
-    function _withdrawEthSwapForUsdcAndRepay(uint256 amountToWithdraw) internal {
+    function _withdrawEthSwapForUsdcAndRepay(
+        uint256 amountToWithdraw
+    ) internal {
         // 1. Withdraw enough ETH from Aave
         POOL.withdraw(WETH, amountToWithdraw, address(this));
 
         // 2. Swap WETH for USDC on Uniswap
         uint256 expectedUsdcAmountOut = 0; // TODO: Use a live price feed for this
-        uint256 amountOut = _swap(WETH, USDC, amountToWithdraw, expectedUsdcAmountOut);
+        uint256 amountOut = _swap(
+            WETH,
+            USDC,
+            amountToWithdraw,
+            expectedUsdcAmountOut
+        );
 
         // 3. Repay the loan
         POOL.repay(USDC, amountOut, 2, address(this));
     }
 
-    function _swap(address tokenIn, address tokenOut, uint256 amountIn, uint256 expectedAmountOut)
-        internal
-        returns (uint256 amountOut)
-    {
-        IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter.ExactInputSingleParams({
-            tokenIn: tokenIn,
-            tokenOut: tokenOut,
-            fee: POOL_FEE,
-            recipient: address(this),
-            amountIn: amountIn,
-            amountOutMinimum: expectedAmountOut - (expectedAmountOut / 200), // Allow 0.1% slippage
-            sqrtPriceLimitX96: 0 // TODO: Figure out what this is
-        });
+    function _swap(
+        address tokenIn,
+        address tokenOut,
+        uint256 amountIn,
+        uint256 expectedAmountOut
+    ) internal returns (uint256 amountOut) {
+        IV3SwapRouter.ExactInputSingleParams memory params = IV3SwapRouter
+            .ExactInputSingleParams({
+                tokenIn: tokenIn,
+                tokenOut: tokenOut,
+                fee: POOL_FEE,
+                recipient: address(this),
+                amountIn: amountIn,
+                amountOutMinimum: expectedAmountOut - (expectedAmountOut / 200), // Allow 0.1% slippage
+                sqrtPriceLimitX96: 0 // TODO: Figure out what this is
+            });
 
         return SWAP_ROUTER.exactInputSingle(params);
     }

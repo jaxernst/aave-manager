@@ -5,6 +5,7 @@ out = "out"
 evm_version = "cancun"
 libs = ["lib"]
 gas_reports = ["ETH2X"]
+solc-version="0.8.20"
 
 remappings = [
   "forge-std/=lib/forge-std/src/",
